@@ -8,6 +8,7 @@ dist/
 frontend/node_modules/
 frontend/dist/
 .tools/
+scripts/Start-OpsHubCloudflareTunnel.ps1
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
