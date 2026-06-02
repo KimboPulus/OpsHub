@@ -32,7 +32,3 @@ To jest celowo mały projekt. Nie udaje pełnej platformy przemysłowej, tylko p
 - `GET /alerts/open`
 - `GET /dashboard/summary`
 - `GET /exports/powerbi.csv`
-
-## PyCharm
-
-Plik `run.py` jest prostym entrypointem do uruchomienia serwisu z IDE. Dzięki temu projekt można otworzyć w PyCharmie i odpalić go przyciskiem Play bez pamiętania komendy `uvicorn`.
