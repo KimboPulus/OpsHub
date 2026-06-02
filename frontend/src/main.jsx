@@ -563,6 +563,9 @@ function IssueDetails({ id, go, onChanged }) {
   }
 
   async function removeIssue() {
+    const confirmed = window.confirm(`Na pewno usunąć zgłoszenie "${issue.title}"? Tej akcji nie da się cofnąć.`)
+    if (!confirmed) return
+
     await apiFetch(`/api/issues/${id}`, { method: 'DELETE' })
     await onChanged()
     go('/issues')
