@@ -1,0 +1,27 @@
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: factory-iot-timescaledb
+    environment:
+      POSTGRES_USER: factory
+      POSTGRES_PASSWORD: factory
+      POSTGRES_DB: factory_iot
+    ports:
+      - "5432:5432"
+    volumes:
+      - factory_iot_pgdata:/var/lib/postgresql/data
+
+  api:
+    build: .
+    container_name: factory-iot-api
+    depends_on:
+      - timescaledb
+    environment:
+      DATABASE_URL: postgresql+psycopg://factory:factory@timescaledb:5432/factory_iot
+      SIMULATOR_ON_START: "true"
+      SIMULATOR_INTERVAL_SECONDS: "2"
+    ports:
+      - "8000:8000"
+
+volumes:
+  factory_iot_pgdata:
