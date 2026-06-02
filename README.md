@@ -1,6 +1,6 @@
 # OpsHub
 
-OpsHub is a small factory-floor operations app. It started as a rewrite of my Fortaco Ops Hub idea, this time with a Java backend and a React frontend.
+OpsHub is a small factory-floor operations app.
 
 The app is built around production issues: machines, work orders, downtime, comments, handoff to teams, attachments, reports and a small simulated ERP API. It is not meant to be a finished commercial system, but it is more than just a CRUD table. I wanted it to feel like something that could actually sit on a shift leader's screen.
 
