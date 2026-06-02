@@ -31,6 +31,7 @@ The app is built around production issues: machines, work orders, downtime, comm
 
 ## Screenshots
 
+![OpsHub screenshot 1](docs/screenshots/screenshot-12.png)
 ![OpsHub screenshot 1](docs/screenshots/screenshot-01.png)
 ![OpsHub screenshot 2](docs/screenshots/screenshot-02.png)
 ![OpsHub screenshot 3](docs/screenshots/screenshot-03.png)
