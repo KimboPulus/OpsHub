@@ -155,6 +155,7 @@ function App() {
   if (issueMatch) page = <IssueDetails id={Number(issueMatch[1])} go={go} onChanged={loadState} />
   if (path === '/machines/qr') page = <MachineQr machines={state.machines} go={go} />
   if (path === '/reports') page = <Reports state={state} />
+  if (path === '/iot') page = <FactoryIoT />
   if (path === '/platform') page = <Platform state={state} go={go} />
 
   return (
@@ -173,6 +174,7 @@ function Shell({ go, path, user, onLogout }) {
     ['/', 'Start'],
     ['/issues', 'Produkcja'],
     ['/reports', 'Raporty'],
+    ['/iot', 'IoT'],
     ['/machines/qr', 'QR'],
     ['/platform', 'IT'],
   ]
@@ -709,6 +711,136 @@ function Reports({ state }) {
       </div>
     </div>
   )
+}
+
+function FactoryIoT() {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function loadTelemetry() {
+    setError('')
+    try {
+      const response = await apiFetch('/api/iot/dashboard/summary')
+      if (!response.ok) throw new Error('Serwis IoT nie odpowiada. Uruchom projekt Python na porcie 8000.')
+      setData(await response.json())
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function simulateTick() {
+    setBusy(true)
+    setError('')
+    try {
+      const response = await apiFetch('/api/iot/simulator/tick?count=5', { method: 'POST' })
+      if (!response.ok) throw new Error('Nie udało się wygenerować próbki telemetryki.')
+      await loadTelemetry()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  useEffect(() => {
+    loadTelemetry()
+  }, [])
+
+  const oee = data?.oee ?? {}
+  const latest = data?.latestTelemetry ?? []
+  const anomalies = data?.recentAnomalies ?? []
+  const alerts = data?.openAlerts ?? []
+
+  return (
+    <div className="ops-page">
+      <PageHeader eyebrow="Pipeline IoT fabryki" title="Dashboard telemetryki maszyn" text="Serwis FastAPI symuluje dane z maszyn, wykrywa anomalie i liczy dzienne KPI. OpsHub pobiera te dane przez mały gateway w Springu.">
+        <button className="btn btn-outline-dark" onClick={loadTelemetry}>Odśwież</button>
+        <button className="btn btn-dark" onClick={simulateTick} disabled={busy}>{busy ? 'Generuję...' : 'Wygeneruj telemetrykę'}</button>
+        <ExportButton href="/api/iot/exports/powerbi.csv">Power BI CSV</ExportButton>
+      </PageHeader>
+
+      {error && <div className="alert danger mb">{error}</div>}
+      {loading && <LoadingPage />}
+
+      {!loading && !data && !error && <div className="empty-state">Nie ma jeszcze danych telemetrycznych. Wygeneruj kilka odczytów, żeby zapełnić dashboard.</div>}
+
+      {data && (
+        <>
+          <MetricGrid>
+            <Metric label="Dzienne OEE" value={`${oee.oee ?? 0}%`} note={`Dostępność ${oee.availability ?? 0}% / wydajność ${oee.performance ?? 0}%`} />
+            <Metric label="Produkcja" value={oee.production_count ?? 0} note="Liczba sztuk z dzisiejszych odczytów" />
+            <Metric label="Energia na sztukę" value={`${oee.energy_per_unit ?? 0} kWh`} note="Koszt i efektywność energetyczna procesu" />
+            <Metric danger label="Otwarte alerty" value={alerts.length} note="Krytyczne zdarzenia widoczne dla zmiany" />
+          </MetricGrid>
+
+          <div className="ops-grid reporting-grid mt">
+            <Panel title="Dostępność maszyn" subtitle="Procent odczytów, w których maszyna pracowała normalnie.">
+              {(oee.machine_uptime ?? []).map(row => <BarRow key={row.machine} label={row.machine} sublabel="dzisiejsza dostępność" value={`${row.uptime}%`} width={row.uptime} />)}
+              {(oee.machine_uptime ?? []).length === 0 && <div className="empty-state">Brak danych o dostępności.</div>}
+            </Panel>
+            <Panel title="Produkcja według zmiany" subtitle="Prosty podział produkcji dla lidera zmiany.">
+              {(oee.production_by_shift ?? []).map(row => <SplitRow key={row.shift} label={`Zmiana ${row.shift}`} value={`${row.produced_units} szt.`} />)}
+              {(oee.production_by_shift ?? []).length === 0 && <div className="empty-state">Brak danych produkcyjnych.</div>}
+            </Panel>
+          </div>
+
+          <div className="ops-grid reporting-grid mt">
+            <Panel title="Powody przestojów" subtitle="Szybki widok statusów innych niż praca i kodów błędów maszyn.">
+              {(oee.downtime_causes ?? []).map(row => <SplitRow key={row.cause} label={downtimeCauseText(row.cause)} value={`${row.count} odczytów`} />)}
+              {(oee.downtime_causes ?? []).length === 0 && <div className="empty-state">Nie zarejestrowano przestojów.</div>}
+            </Panel>
+            <Panel title="Anomalie temperatury i drgań" subtitle="Ostatnie anomalie wykryte regułami po stronie serwisu FastAPI.">
+              {anomalies.slice(0, 6).map(item => <SplitRow key={item.id} label={`${anomalyKindText(item.kind)} / ${anomalySeverityText(item.severity)}`} value={dateTime(item.timestamp)} sublabel={item.message} />)}
+              {anomalies.length === 0 && <div className="empty-state">Brak anomalii w ostatnich danych.</div>}
+            </Panel>
+          </div>
+
+          <div className="ops-grid platform-grid mt">
+            <Panel title="Ostatnia telemetryka" subtitle="Najnowsze odczyty z pipeline'u sensorów.">
+              {latest.slice(0, 8).map(row => <SplitRow key={row.id} label={`${row.machine_code ?? `Maszyna ${row.machine_id}`} - ${machineStatusText(row.status)}`} value={`${row.temperature} C / ${row.vibration} mm/s`} sublabel={`${dateTime(row.timestamp)} - ${row.energy_kwh} kWh - ${row.produced_units} szt.`} />)}
+              {latest.length === 0 && <div className="empty-state">Brak odczytów telemetrycznych.</div>}
+            </Panel>
+            <Panel title="Otwarte alerty" subtitle="Krytyczne zdarzenia, które normalnie trafiłyby do Teams, maila albo tablicy zmiany.">
+              {alerts.slice(0, 8).map(alert => <SplitRow key={alert.id} label={alert.title} value={anomalySeverityText(alert.severity)} sublabel={alert.message} />)}
+              {alerts.length === 0 && <div className="empty-state">Brak otwartych alertów. Dobra zmiana.</div>}
+            </Panel>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function anomalyKindText(kind) {
+  return {
+    temperature: 'temperatura',
+    vibration: 'drgania',
+    energy: 'energia',
+    machine_status: 'status maszyny',
+  }[kind] ?? kind
+}
+
+function anomalySeverityText(severity) {
+  return {
+    warning: 'ostrzeżenie',
+    critical: 'krytyczny',
+  }[severity] ?? severity
+}
+
+function machineStatusText(status) {
+  return {
+    RUNNING: 'praca',
+    IDLE: 'postój',
+    DOWN: 'awaria',
+  }[status] ?? status
+}
+
+function downtimeCauseText(cause) {
+  return cause === 'no_error' ? 'postój bez kodu błędu' : cause
 }
 
 function Platform({ state, go }) {

@@ -4,6 +4,8 @@ OpsHub is a small factory-floor operations app.
 
 The app is built around production issues: machines, work orders, downtime, comments, handoff to teams, attachments, reports and a small simulated ERP API. It is not meant to be a finished commercial system, but it is more than just a CRUD table. I wanted it to feel like something that could actually sit on a shift leader's screen.
 
+There is also a separate Python subproject in `services/factory-iot-pipeline`. It simulates machine telemetry, detects simple anomalies and feeds the IoT tab in OpsHub through a small Spring gateway. I kept it as a separate service because the responsibilities are different: Python handles sensor data and analytics, while the Java app stays focused on the factory operations UI.
+
 ## Stack
 
 - Spring Boot
@@ -13,6 +15,7 @@ The app is built around production issues: machines, work orders, downtime, comm
 - plain CSS
 - Maven wrapper
 - npm lockfile
+- Python + FastAPI for the IoT telemetry subproject
 
 ## Main parts
 
@@ -26,8 +29,9 @@ The app is built around production issues: machines, work orders, downtime, comm
 - CSV export
 - weekly PDF export
 - simulated ERP schedule endpoint
+- external Factory IoT telemetry dashboard through a small Spring gateway
 - basic security headers and upload checks
-- 50 backend tests
+- backend tests for the main app and the IoT gateway
 
 ## Screenshots
 
@@ -50,6 +54,7 @@ The app is built around production issues: machines, work orders, downtime, comm
 src/main/java        backend code
 src/test/java        backend tests
 frontend             React app
+services             separate Python IoT telemetry service
 docs/screenshots     screenshots for this README
 ```
 
@@ -57,6 +62,6 @@ docs/screenshots     screenshots for this README
 
 The backend seeds a few demo production lines, machines, work orders and issues, so the app has something to show immediately.
 
-The frontend talks to the backend through `/api`, `/exports` and `/uploads`. In development Vite proxies those paths to the Spring Boot server.
+The frontend talks to the backend through `/api`, `/exports` and `/uploads`. The IoT page also talks to `/api/iot/...`; those requests go to Spring first, and Spring calls the Python telemetry service.
 
-The tests cover the important behavior: issue rules, login/session security, seeding, API endpoints, comments, status changes, CSV/PDF exports and upload validation.
+The tests cover the important behavior: issue rules, login/session security, seeding, API endpoints, comments, status changes, CSV/PDF exports, upload validation and the IoT gateway.
