@@ -89,6 +89,26 @@ p {
   flex-wrap: wrap;
 }
 
+.session-tools {
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.session-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.1rem;
+  padding: 0 0.7rem;
+  color: var(--brand-dark);
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
 .topbar nav button {
   min-height: 2.4rem;
   padding: 0 0.8rem;
@@ -108,6 +128,59 @@ p {
 
 .content {
   padding: 1.4rem 1.5rem 2.5rem;
+}
+
+.login-page {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 1.5rem;
+  background:
+    linear-gradient(135deg, rgba(15, 81, 50, 0.94), rgba(8, 47, 73, 0.9)),
+    linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px) 0 0 / 36px 36px;
+}
+
+.login-card {
+  width: min(100%, 440px);
+  padding: 1.4rem;
+  background: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.2);
+}
+
+.login-card h1 {
+  margin: 1.2rem 0 0.5rem;
+  font-size: 2rem;
+}
+
+.login-card p {
+  color: var(--muted);
+}
+
+.login-card form {
+  display: grid;
+  gap: 0.9rem;
+  margin-top: 1rem;
+}
+
+.login-hint {
+  display: grid;
+  gap: 0.2rem;
+  margin-top: 1rem;
+  padding: 0.85rem;
+  color: var(--muted);
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.login-hint strong {
+  color: var(--ink);
+}
+
+.login-brand {
+  justify-content: flex-start;
 }
 
 .ops-page {
@@ -921,6 +994,7 @@ small {
   }
 
   .topbar nav,
+  .session-tools,
   .topbar .btn,
   .brand {
     margin-top: 0.65rem;

@@ -27,7 +27,7 @@ The app is built around production issues: machines, work orders, downtime, comm
 - weekly PDF export
 - simulated ERP schedule endpoint
 - basic security headers and upload checks
-- 44 backend tests
+- 50 backend tests
 
 ## Screenshots
 
@@ -58,4 +58,4 @@ The backend seeds a few demo production lines, machines, work orders and issues,
 
 The frontend talks to the backend through `/api`, `/exports` and `/uploads`. In development Vite proxies those paths to the Spring Boot server.
 
-The tests cover the important behavior: issue rules, seeding, API endpoints, comments, status changes, CSV/PDF exports and upload validation.
+The tests cover the important behavior: issue rules, login/session security, seeding, API endpoints, comments, status changes, CSV/PDF exports and upload validation.

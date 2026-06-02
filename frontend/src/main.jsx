@@ -4,6 +4,13 @@ import './styles.css'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 
+function apiFetch(path, options = {}) {
+  return fetch(`${API_BASE}${path}`, {
+    credentials: 'include',
+    ...options,
+  })
+}
+
 const categoryText = {
   MACHINE_FAILURE: 'Awaria maszyny',
   QUALITY_PROBLEM: 'Problem jakościowy',
@@ -45,13 +52,20 @@ const criticalityText = {
 function App() {
   const [path, setPath] = useState(window.location.pathname)
   const [state, setState] = useState({ issues: [], machines: [], workOrders: [], activities: [] })
+  const [user, setUser] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [loginError, setLoginError] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   async function loadState() {
     setError('')
     try {
-      const response = await fetch(`${API_BASE}/api/state`)
+      const response = await apiFetch('/api/state')
+      if (response.status === 401) {
+        setUser(null)
+        return
+      }
       if (!response.ok) throw new Error('Nie udało się pobrać danych z API.')
       setState(await response.json())
     } catch (err) {
@@ -61,8 +75,28 @@ function App() {
     }
   }
 
+  async function loadSession() {
+    setLoginError('')
+    try {
+      const response = await apiFetch('/api/auth/me')
+      if (response.status === 401) {
+        setUser(null)
+        setLoading(false)
+        return
+      }
+      if (!response.ok) throw new Error('Nie udało się sprawdzić sesji.')
+      setUser(await response.json())
+      await loadState()
+    } catch (err) {
+      setLoginError(err.message)
+      setLoading(false)
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
   useEffect(() => {
-    loadState()
+    loadSession()
     const onPop = () => setPath(window.location.pathname)
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
@@ -79,6 +113,38 @@ function App() {
     go(to)
   }
 
+  async function login(credentials) {
+    setLoginError('')
+    const response = await apiFetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(credentials),
+    })
+
+    if (!response.ok) {
+      setLoginError('Nieprawidłowy login albo hasło.')
+      return
+    }
+
+    setLoading(true)
+    await loadSession()
+  }
+
+  async function logout() {
+    await apiFetch('/api/auth/logout', { method: 'POST' })
+    setUser(null)
+    setState({ issues: [], machines: [], workOrders: [], activities: [] })
+    go('/')
+  }
+
+  if (authLoading) {
+    return <main className="content"><LoadingPage /></main>
+  }
+
+  if (!user) {
+    return <LoginPage onLogin={login} error={loginError} />
+  }
+
   const issueMatch = path.match(/^\/issues\/(\d+)$/)
   const qrMachineMatch = path.match(/^\/issues\/create\/machine\/([^/]+)$/)
 
@@ -93,7 +159,7 @@ function App() {
 
   return (
     <>
-      <Shell go={go} path={path} />
+      <Shell go={go} path={path} user={user} onLogout={logout} />
       <main className="content">
         {error && <div className="ops-page"><div className="alert danger">{error} Sprawdź, czy backend działa na porcie 8080.</div></div>}
         {loading ? <LoadingPage /> : page}
@@ -102,7 +168,7 @@ function App() {
   )
 }
 
-function Shell({ go, path }) {
+function Shell({ go, path, user, onLogout }) {
   const items = [
     ['/', 'Start'],
     ['/issues', 'Produkcja'],
@@ -122,8 +188,46 @@ function Shell({ go, path }) {
           <button key={to} className={path === to ? 'active' : ''} onClick={() => go(to)}>{label}</button>
         ))}
       </nav>
+      <div className="session-tools">
+        <span className="session-pill">{user.displayName}</span>
+        <button className="btn btn-outline-dark" onClick={onLogout}>Wyloguj</button>
+      </div>
       <button className="btn btn-dark" onClick={() => go('/issues/create')}>Nowe zgłoszenie</button>
     </header>
+  )
+}
+
+function LoginPage({ onLogin, error }) {
+  const [username, setUsername] = useState('lider')
+  const [password, setPassword] = useState('opshub')
+  const [busy, setBusy] = useState(false)
+
+  async function submit(event) {
+    event.preventDefault()
+    setBusy(true)
+    await onLogin({ username, password })
+    setBusy(false)
+  }
+
+  return (
+    <main className="login-page">
+      <section className="login-card">
+        <div className="brand login-brand"><span>FOH</span><strong>Fortaco Ops Hub</strong></div>
+        <h1>Logowanie do panelu</h1>
+        <p>Demo ma proste konta dla operatora i lidera zmiany, tak jak w małym wewnętrznym narzędziu produkcyjnym.</p>
+        {error && <div className="alert danger">{error}</div>}
+        <form onSubmit={submit}>
+          <Field label="Login"><input value={username} onChange={event => setUsername(event.target.value)} autoComplete="username" /></Field>
+          <Field label="Hasło"><input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="current-password" /></Field>
+          <button className="btn btn-dark btn-lg" disabled={busy}>{busy ? 'Logowanie...' : 'Zaloguj'}</button>
+        </form>
+        <div className="login-hint">
+          <strong>Konta demo</strong>
+          <span>lider / opshub</span>
+          <span>operator / opshub</span>
+        </div>
+      </section>
+    </main>
   )
 }
 
@@ -335,7 +439,7 @@ function CreateIssue({ state, go, onSaved, machineCode }) {
     }
 
     try {
-      const response = await fetch(`${API_BASE}/api/issues`, {
+      const response = await apiFetch('/api/issues', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -346,7 +450,7 @@ function CreateIssue({ state, go, onSaved, machineCode }) {
       for (const file of files) {
         const data = new FormData()
         data.append('file', file)
-        const upload = await fetch(`${API_BASE}/api/issues/${saved.id}/attachments`, {
+        const upload = await apiFetch(`/api/issues/${saved.id}/attachments`, {
           method: 'POST',
           body: data,
         })
@@ -416,7 +520,7 @@ function IssueDetails({ id, go, onChanged }) {
   async function load() {
     setError('')
     try {
-      const response = await fetch(`${API_BASE}/api/issues/${id}`)
+      const response = await apiFetch(`/api/issues/${id}`)
       if (!response.ok) throw new Error('Nie znaleziono zgłoszenia.')
       setIssue(await response.json())
     } catch (err) {
@@ -425,7 +529,7 @@ function IssueDetails({ id, go, onChanged }) {
   }
 
   async function loadSimilar(page = 1) {
-    const response = await fetch(`${API_BASE}/api/issues/${id}/similar?page=${page}&pageSize=3`)
+    const response = await apiFetch(`/api/issues/${id}/similar?page=${page}&pageSize=3`)
     if (response.ok) setSimilar(await response.json())
   }
 
@@ -434,7 +538,7 @@ function IssueDetails({ id, go, onChanged }) {
   }, [id])
 
   async function setStatus(status) {
-    await fetch(`${API_BASE}/api/issues/${id}/status`, {
+    await apiFetch(`/api/issues/${id}/status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),
@@ -446,7 +550,7 @@ function IssueDetails({ id, go, onChanged }) {
   async function addComment(event) {
     event.preventDefault()
     if (!comment.trim()) return
-    await fetch(`${API_BASE}/api/issues/${id}/comments`, {
+    await apiFetch(`/api/issues/${id}/comments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: comment, createdBy: author }),
@@ -457,7 +561,7 @@ function IssueDetails({ id, go, onChanged }) {
   }
 
   async function removeIssue() {
-    await fetch(`${API_BASE}/api/issues/${id}`, { method: 'DELETE' })
+    await apiFetch(`/api/issues/${id}`, { method: 'DELETE' })
     await onChanged()
     go('/issues')
   }
