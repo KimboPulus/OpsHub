@@ -1,34 +1,34 @@
 # Factory IoT Sensor Pipeline
 
-Mały serwis Python/FastAPI do symulowania telemetryki z maszyn produkcyjnych.
+A small Python/FastAPI service designed to simulate telemetry data from production machinery.
 
-Ten podprojekt jest oddzielony od głównego OpsHub, bo robi inną rzecz: udaje warstwę IoT, zbiera odczyty z maszyn, wykrywa proste anomalie i wystawia dane, które aplikacja operacyjna może pokazać liderowi zmiany.
+This sub-project is separated from the main OpsHub system because it serves a different purpose: it mimics the IoT layer, collects machine readings, detects simple anomalies, and exposes data that the operational application can display to the shift supervisor.
 
-## Co pokazuje
+## Core Features
 
-- generowanie danych z maszyn: temperatura, drgania, czas cyklu, zużycie energii, status, kody błędów
-- zapis danych telemetrycznych jako time-series
-- proste wykrywanie anomalii regułami
-- dzienne KPI: OEE, dostępność, produkcja według zmiany, energia na sztukę
-- eksport CSV pod Power BI
-- integrację z OpsHub przez mały gateway w Spring Boot
+* **Machine Data Generation:** Simulates temperature, vibrations, cycle time, energy consumption, status, and error codes.
+* **Time-Series Storage:** Saves telemetry data sequentially over time.
+* **Rule-Based Anomaly Detection:** Identifies simple irregularities automatically based on predefined thresholds.
+* **Daily KPIs:** Tracks OEE (Overall Equipment Effectiveness), availability, production output per shift, and energy consumption per unit.
+* **Power BI Export:** Generates CSV exports tailored for Power BI reporting.
+* **OpsHub Integration:** Connects to the main system via a lightweight Spring Boot gateway.
 
-## Dlaczego osobny serwis
+## Why a Separate Service?
 
-OpsHub jest aplikacją operacyjną dla produkcji: zgłoszenia, przestoje, zlecenia, komentarze, raporty.
+**OpsHub** serves as the operational application for the factory floor—handling tickets, downtime, work orders, comments, and reports. 
 
-Factory IoT Sensor Pipeline jest warstwą danych maszynowych. Dzięki temu Python odpowiada za IoT/analitykę, a Java zostaje miejscem, w którym użytkownik widzi efekt i podejmuje decyzje.
+The **Factory IoT Sensor Pipeline**, on the other hand, acts strictly as the machine data layer. This separation allows Python to handle the heavy lifting for IoT and data analysis, while Java remains the central hub where the user interacts with the final results and makes decisions.
 
-To jest celowo mały projekt. Nie udaje pełnej platformy przemysłowej, tylko pokazuje najważniejszy przepływ: maszyna wysyła dane, backend je zapisuje, wykrywa ryzyko, a dashboard pokazuje sensowne KPI.
+This project is intentionally kept lightweight. It doesn't attempt to mimic a massive industrial platform; instead, it demonstrates the core pipeline: a machine transmits data, the backend stores it and flags potential risks, and the dashboard displays meaningful KPIs.
 
-## Główne endpointy
+## Main Endpoints
 
-- `GET /machines`
-- `POST /telemetry`
-- `POST /simulator/tick`
-- `GET /machines/{id}/telemetry`
-- `GET /machines/{id}/anomalies`
-- `GET /oee/daily`
-- `GET /alerts/open`
-- `GET /dashboard/summary`
-- `GET /exports/powerbi.csv`
+* `GET /machines`
+* `POST /telemetry`
+* `POST /simulator/tick`
+* `GET /machines/{id}/telemetry`
+* `GET /machines/{id}/anomalies`
+* `GET /oee/daily`
+* `GET /alerts/open`
+* `GET /dashboard/summary`
+* `GET /exports/powerbi.csv`
