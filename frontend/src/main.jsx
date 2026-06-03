@@ -156,7 +156,7 @@ function App() {
   if (path === '/machines/qr') page = <MachineQr machines={state.machines} go={go} />
   if (path === '/reports') page = <Reports state={state} />
   if (path === '/iot') page = <FactoryIoT />
-  if (path === '/platform') page = <Platform state={state} go={go} />
+  if (path === '/platform') page = <PowerPlatform state={state} go={go} />
 
   return (
     <>
@@ -176,7 +176,7 @@ function Shell({ go, path, user, onLogout }) {
     ['/reports', 'Raporty'],
     ['/iot', 'IoT'],
     ['/machines/qr', 'QR'],
-    ['/platform', 'IT'],
+    ['/platform', 'Power/BI'],
   ]
 
   return (
@@ -304,7 +304,7 @@ function Home({ state, go }) {
       <div className="ops-grid readiness-grid mt">
         <Feature label="Operator" title="Zgłoszenia przez QR" text="Wejście z kodu maszyny, zdjęcia problemu i duże pola do pracy na tablecie przy stanowisku." button="Otwórz stację QR" onClick={() => go('/machines/qr')} />
         <Feature label="Raportowanie" title="Power BI-style KPI" text="Widok dla lidera pokazuje OEE proxy, MTTR, przestoje, jakość oraz eksport CSV/PDF." button="Zobacz raporty" onClick={() => go('/reports')} />
-        <Feature label="Business IT" title="ERP, API i audyt" text="Tu widać, jak projekt można podpiąć pod ERP, role użytkowników i prosty pipeline wdrożeniowy." button="Otwórz IT hub" onClick={() => go('/platform')} />
+        <Feature label="Power Platform" title="BI, flowy i Dataverse" text="Widok pokazuje Canvas App, Power Automate, tabele Dataverse i SQL views gotowe pod Power BI." button="Otwórz Power/BI" onClick={() => go('/platform')} />
       </div>
     </div>
   )
@@ -844,6 +844,125 @@ function machineStatusText(status) {
 
 function downtimeCauseText(cause) {
   return cause === 'no_error' ? 'postój bez kodu błędu' : cause
+}
+
+function PowerPlatform({ state, go }) {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  async function loadReporting() {
+    setError('')
+    try {
+      const response = await apiFetch('/api/reporting/power-platform')
+      if (!response.ok) throw new Error('Nie udało się pobrać warstwy raportowej.')
+      setData(await response.json())
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadReporting()
+  }, [])
+
+  const summary = data?.summary ?? {}
+  const downtimeRows = data?.downtimeByMachine ?? []
+  const maxDowntime = Math.max(...downtimeRows.map(row => row.downtimeMinutes), 0)
+  const auditPreview = state.activities
+    .filter(activity => activity.message && activity.message.toLowerCase() !== 'test' && !activity.message.toLowerCase().includes('testst'))
+    .slice(0, 5)
+
+  return (
+    <div className="ops-page">
+      <PageHeader eyebrow="Power Platform i BI" title="Power Platform readiness" text="Ekran pokazuje, jak OpsHub spina Canvas App, Power Automate, Dataverse i SQL reporting w jeden scenariusz dla produkcji. KPI są czytane z backendowych widoków SQL.">
+        <button className="btn btn-outline-dark" onClick={loadReporting}>Odśwież</button>
+        <ExportButton href="/api/erp/daily-schedule">ERP API</ExportButton>
+        <button className="btn btn-dark" onClick={() => go('/issues/create')}>Test zgłoszenia</button>
+      </PageHeader>
+
+      {error && <div className="alert danger mb">{error}</div>}
+      {loading && <LoadingPage />}
+
+      {!loading && (
+        <>
+          <MetricGrid>
+            <Metric label="Otwarte zgłoszenia" value={summary.openIssues ?? 0} note="Z widoku rpt_issue_aging" />
+            <Metric danger label="Krytyczne otwarte" value={summary.criticalOpenIssues ?? 0} note="Backlog do eskalacji flowem" />
+            <Metric label="Średnie OEE proxy" value={`${summary.averageOee ?? 0}%`} note="Z widoku rpt_oee_daily" />
+            <Metric label="Energia na sztukę" value={`${summary.energyPerUnit ?? 0} kWh`} note="Z widoku rpt_energy_per_unit" />
+          </MetricGrid>
+
+          <div className="ops-grid platform-grid mt">
+            <Panel title="Canvas App screens" subtitle="Ekrany, które można przenieść do Power Apps bez zmieniania logiki procesu.">
+              <div className="platform-card-grid">
+                {(data?.canvasScreens ?? []).map(screen => <PlatformCard key={screen.name} label={screen.scope} title={screen.name} text={screen.detail} />)}
+              </div>
+            </Panel>
+            <Panel title="Power Automate cloud flows" subtitle="Automatyzacje pokazane jako konkretne zdarzenia, a nie luźny pomysł na przyszłość.">
+              <div className="flow-list">
+                {(data?.cloudFlows ?? []).map(flow => <FlowCard key={flow.name} flow={flow} />)}
+              </div>
+            </Panel>
+          </div>
+
+          <div className="ops-grid platform-grid mt">
+            <Panel title="Dataverse model" subtitle="Model tabel pod Canvas App i flowy. Nazwy są bliskie temu, co już istnieje w Javie.">
+              <div className="table-chip-grid">
+                {(data?.dataverseTables ?? []).map(table => <div className="table-chip" key={table.name}><strong>{table.name}</strong><span>{table.purpose}</span></div>)}
+              </div>
+            </Panel>
+            <Panel title="SQL views dla Power BI" subtitle="Widoki tworzone przez backend przy starcie aplikacji. To jest warstwa pod raporty, nie statyczna tabelka w React.">
+              <div className="sql-view-list">
+                {(data?.views ?? []).map(view => <SplitRow key={view.name} label={view.name} value={`${view.rows} wierszy`} sublabel={view.purpose} />)}
+              </div>
+            </Panel>
+          </div>
+
+          <div className="ops-grid reporting-grid mt">
+            <Panel title="Power BI: przestój według maszyn" subtitle="Dane z rpt_downtime_by_machine, gotowe do wykresu Pareto.">
+              {downtimeRows.map(row => <BarRow key={row.machineCode} label={row.machineCode} sublabel={`${row.machineName} / ${row.productionLine}`} value={`${row.downtimeMinutes} min`} width={maxDowntime ? Math.max(12, Math.round((row.downtimeMinutes / maxDowntime) * 100)) : 0} />)}
+            </Panel>
+            <Panel title="Power BI: OEE i energia" subtitle="Dwie osobne perspektywy: linie produkcyjne oraz zużycie energii na sztukę.">
+              {(data?.oeeDaily ?? []).map(row => <SplitRow key={`${row.reportDate}-${row.productionLine}`} label={`${row.productionLine} / ${row.reportDate}`} value={`${row.oeeProxy}% OEE`} sublabel={`${row.downtimeMinutes} min przestoju, dostępność ${row.availabilityProxy}%`} />)}
+              {(data?.energyPerUnit ?? []).slice(0, 4).map(row => <SplitRow key={`${row.reportDate}-${row.shiftName}-${row.machineCode}`} label={`${row.machineCode} / zmiana ${row.shiftName}`} value={`${row.energyKwhPerUnit} kWh/szt.`} sublabel={`${row.producedUnits} szt., ${row.totalEnergyKwh} kWh`} />)}
+            </Panel>
+          </div>
+
+          <div className="ops-grid platform-grid mt">
+            <Panel title="Backlog z widoku SQL" subtitle="Najważniejsze otwarte zgłoszenia z rpt_issue_aging.">
+              {(data?.issueAging ?? []).map(issue => <div className="report-issue-row" key={issue.issueId}><div><strong>{issue.title}</strong><small>{issue.machineCode} / {issue.productionLine} / {issue.assignedTeam}</small></div><div className="badge-row"><Badge tone={severityTone(issue.severity)}>{severityText[issue.severity]}</Badge><Badge tone={statusTone(issue.status)}>{statusText[issue.status]}</Badge><span>{issue.ageHours} h</span></div></div>)}
+            </Panel>
+            <Panel title="Audit i integracje" subtitle="Ten sam proces łączy UI, API, SQL reporting i automatyzacje.">
+              <div className="connector-chain">
+                <span>Canvas App</span>
+                <span>Power Automate</span>
+                <span>Dataverse / SQL</span>
+                <span>Power BI</span>
+              </div>
+              <div className="integration-list mt">
+                <ListItem title="GET /api/reporting/power-platform" text="pakiet danych dla tego ekranu" />
+                <ListItem title="GET /exports/production-issues.csv" text="CSV pod Excel / Power BI" />
+                <ListItem title="GET /api/iot/dashboard/summary" text="telemetria maszyn z serwisu Python" />
+                <ListItem title="GET /api/erp/daily-schedule" text="mock integracji SAP/ERP" />
+              </div>
+              {auditPreview.length > 0 && <div className="mt">{auditPreview.map(activity => <SplitRow key={activity.id} label={activity.createdBy} value={dateTime(activity.createdAt)} sublabel={activity.message} />)}</div>}
+            </Panel>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function PlatformCard({ label, title, text }) {
+  return <div className="platform-feature-card"><span>{label}</span><strong>{title}</strong><small>{text}</small></div>
+}
+
+function FlowCard({ flow }) {
+  return <div className="flow-card"><strong>{flow.name}</strong><span>{flow.trigger}</span><small>{flow.action}</small></div>
 }
 
 function Platform({ state, go }) {

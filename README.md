@@ -6,6 +6,8 @@ The app is built around production issues: machines, work orders, downtime, comm
 
 There is also a separate Python subproject in `services/factory-iot-pipeline`. It simulates machine telemetry, detects simple anomalies and feeds the IoT tab in OpsHub through a small Spring gateway. I kept it as a separate service because the responsibilities are different: Python handles sensor data and analytics, while the Java app stays focused on the factory operations UI.
 
+The newest part is a Power Platform / BI readiness screen. It shows how the same factory process could map into Canvas apps, Power Automate flows, Dataverse-style tables and Power BI reporting views, while still using real data from the OpsHub backend.
+
 ## Stack
 
 - Spring Boot
@@ -16,6 +18,7 @@ There is also a separate Python subproject in `services/factory-iot-pipeline`. I
 - Maven wrapper
 - npm lockfile
 - Python + FastAPI for the IoT telemetry subproject
+- SQL reporting views for Power BI-style dashboards
 
 ## Main parts
 
@@ -30,6 +33,11 @@ There is also a separate Python subproject in `services/factory-iot-pipeline`. I
 - weekly PDF export
 - simulated ERP schedule endpoint
 - external Factory IoT telemetry dashboard through a small Spring gateway
+- Power Platform / BI readiness screen
+- Dataverse-style table model shown in the UI
+- Power Automate flow cards for critical issues, IoT alerts and shift summaries
+- SQL reporting views for issue aging, downtime, OEE proxy and energy per unit
+- reporting API endpoint for the Power/BI screen
 - basic security headers and upload checks
 - backend tests for the main app and the IoT gateway
 
@@ -55,6 +63,7 @@ src/main/java        backend code
 src/test/java        backend tests
 frontend             React app
 services             separate Python IoT telemetry service
+scripts              SQL reporting view scripts and Power BI sample queries
 docs/screenshots     screenshots for this README
 ```
 
@@ -64,4 +73,6 @@ The backend seeds a few demo production lines, machines, work orders and issues,
 
 The frontend talks to the backend through `/api`, `/exports` and `/uploads`. The IoT page also talks to `/api/iot/...`; those requests go to Spring first, and Spring calls the Python telemetry service.
 
-The tests cover the important behavior: issue rules, login/session security, seeding, API endpoints, comments, status changes, CSV/PDF exports, upload validation and the IoT gateway.
+The Power/BI page talks to `/api/reporting/power-platform`. The backend builds the reporting layer from SQL views like `rpt_issue_aging`, `rpt_downtime_by_machine`, `rpt_oee_daily` and `rpt_energy_per_unit`.
+
+The tests cover the important behavior: issue rules, login/session security, seeding, API endpoints, comments, status changes, CSV/PDF exports, upload validation, the IoT gateway and the reporting views.
