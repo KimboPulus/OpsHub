@@ -880,7 +880,6 @@ function PowerPlatform({ state, go }) {
       <PageHeader eyebrow="Power Platform i BI" title="Power Platform readiness" text="Ekran pokazuje, jak OpsHub spina Canvas App, Power Automate, Dataverse i SQL reporting w jeden scenariusz dla produkcji. KPI są czytane z backendowych widoków SQL.">
         <button className="btn btn-outline-dark" onClick={loadReporting}>Odśwież</button>
         <ExportButton href="/api/erp/daily-schedule">ERP API</ExportButton>
-        <button className="btn btn-dark" onClick={() => go('/issues/create')}>Test zgłoszenia</button>
       </PageHeader>
 
       {error && <div className="alert danger mb">{error}</div>}
@@ -982,7 +981,6 @@ function Platform({ state, go }) {
     <div className="ops-page">
       <PageHeader eyebrow="Business IT readiness" title="IT, integracje i wdrożenie" text="Tu pokazuję zaplecze projektu: kto z tego korzysta, jakie API już jest, gdzie wejdzie ERP i jak to można potem wdrożyć trochę porządniej niż odpalone na laptopie.">
         <ExportButton href="/api/erp/daily-schedule">Podgląd ERP API</ExportButton>
-        <button className="btn btn-dark" onClick={() => go('/issues/create')}>Test zgłoszenia</button>
       </PageHeader>
       <div className="ops-grid platform-grid">
         <Panel title="Role i uprawnienia" subtitle="Docelowo można to podpiąć pod Microsoft Entra ID i rozdzielić dostęp według roli w zakładzie."><div className="role-grid">{roles.map(([name, scope, access]) => <div className="role-card" key={name}><strong>{name}</strong><span>{scope}</span><small>{access}</small></div>)}</div></Panel>
