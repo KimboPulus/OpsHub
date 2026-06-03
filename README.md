@@ -55,6 +55,7 @@ The newest part is a Power Platform / BI readiness screen. It shows how the same
 ![OpsHub screenshot 9](docs/screenshots/screenshot-09.png)
 ![OpsHub screenshot 10](docs/screenshots/screenshot-10.png)
 ![OpsHub screenshot 11](docs/screenshots/screenshot-11.png)
+![OpsHub screenshot 11](docs/screenshots/screenshot-13.png)
 
 ## Project shape
 
