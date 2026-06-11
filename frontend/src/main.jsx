@@ -726,7 +726,7 @@ function FactoryIoT() {
     setError('')
     try {
       const response = await apiFetch('/api/iot/dashboard/summary')
-      if (!response.ok) throw new Error('Serwis IoT nie odpowiada. Uruchom projekt Python na porcie 8000.')
+      if (!response.ok) throw new Error('Moduł IoT nie odpowiada. Sprawdź, czy backend Spring Boot działa.')
       setData(await response.json())
     } catch (err) {
       setError(err.message)
@@ -760,7 +760,7 @@ function FactoryIoT() {
 
   return (
     <div className="ops-page">
-      <PageHeader eyebrow="Pipeline IoT fabryki" title="Dashboard telemetryki maszyn" text="Serwis FastAPI symuluje dane z maszyn, wykrywa anomalie i liczy dzienne KPI. OpsHub pobiera te dane przez mały gateway w Springu.">
+      <PageHeader eyebrow="Pipeline IoT fabryki" title="Dashboard telemetryki maszyn" text="Moduł Spring symuluje dane z maszyn, wykrywa anomalie, zapisuje alerty i liczy dzienne KPI bez osobnego serwisu.">
         <button className="btn btn-outline-dark" onClick={loadTelemetry}>Odśwież</button>
         <button className="btn btn-dark" onClick={simulateTick} disabled={busy}>{busy ? 'Generuję...' : 'Wygeneruj telemetrykę'}</button>
         <ExportButton href="/api/iot/exports/powerbi.csv">Power BI CSV</ExportButton>
@@ -796,7 +796,7 @@ function FactoryIoT() {
               {(oee.downtime_causes ?? []).map(row => <SplitRow key={row.cause} label={downtimeCauseText(row.cause)} value={`${row.count} odczytów`} />)}
               {(oee.downtime_causes ?? []).length === 0 && <div className="empty-state">Nie zarejestrowano przestojów.</div>}
             </Panel>
-            <Panel title="Anomalie temperatury i drgań" subtitle="Ostatnie anomalie wykryte regułami po stronie serwisu FastAPI.">
+            <Panel title="Anomalie temperatury i drgań" subtitle="Ostatnie anomalie wykryte przez reguły działające w backendzie Spring Boot.">
               {anomalies.slice(0, 6).map(item => <SplitRow key={item.id} label={`${anomalyKindText(item.kind)} / ${anomalySeverityText(item.severity)}`} value={dateTime(item.timestamp)} sublabel={item.message} />)}
               {anomalies.length === 0 && <div className="empty-state">Brak anomalii w ostatnich danych.</div>}
             </Panel>
@@ -944,7 +944,7 @@ function PowerPlatform({ state, go }) {
               <div className="integration-list mt">
                 <ListItem title="GET /api/reporting/power-platform" text="pakiet danych dla tego ekranu" />
                 <ListItem title="GET /exports/production-issues.csv" text="CSV pod Excel / Power BI" />
-                <ListItem title="GET /api/iot/dashboard/summary" text="telemetria maszyn z serwisu Python" />
+                <ListItem title="GET /api/iot/dashboard/summary" text="telemetria, anomalie i OEE z modułu Java" />
                 <ListItem title="GET /api/erp/daily-schedule" text="mock integracji SAP/ERP" />
               </div>
               {auditPreview.length > 0 && <div className="mt">{auditPreview.map(activity => <SplitRow key={activity.id} label={activity.createdBy} value={dateTime(activity.createdAt)} sublabel={activity.message} />)}</div>}
