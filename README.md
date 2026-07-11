@@ -12,11 +12,15 @@ The newest part is a Power Platform / BI readiness screen. It shows how the same
 
 - Spring Boot
 - Spring Data JPA
-- H2 database for local demo data
+- PostgreSQL production profile
+- H2 local profile for quick demo data
+- Flyway database migrations
 - React + Vite
 - plain CSS
 - Maven wrapper
 - npm lockfile
+- Docker Compose
+- GitHub Actions CI
 - Java/Spring IoT telemetry module
 - SQL reporting views for Power BI-style dashboards
 
@@ -76,3 +80,82 @@ The frontend talks to the backend through `/api`, `/exports` and `/uploads`. The
 The Power/BI page talks to `/api/reporting/power-platform`. The backend builds the reporting layer from SQL views like `rpt_issue_aging`, `rpt_downtime_by_machine`, `rpt_oee_daily` and `rpt_energy_per_unit`.
 
 The tests cover the important behavior: issue rules, login/session security, seeding, API endpoints, comments, status changes, CSV/PDF exports, upload validation, IoT analytics and the reporting views.
+
+## Run locally
+
+Backend:
+
+```bash
+./mvnw spring-boot:run
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+Open `http://127.0.0.1:5173`.
+
+Default local login:
+
+- `lider / opshub`
+- `operator / opshub`
+
+The default profile is `local`. It uses H2 at `./data/fortaco-opshub`, Flyway migrations, seeded demo data and the local Vite origins.
+
+If an old local H2 database was created before Flyway was added, delete the ignored `data/` folder and start again.
+
+## Run with Docker Compose
+
+Copy environment template:
+
+```bash
+cp .env.example .env
+```
+
+Set real values in `.env`, then run:
+
+```bash
+docker compose up --build
+```
+
+Services:
+
+- frontend: `http://localhost:5173`
+- backend API: `http://localhost:8080`
+- PostgreSQL: `localhost:5432`
+
+The Compose stack runs the backend with `SPRING_PROFILES_ACTIVE=prod`, PostgreSQL, Flyway migrations and an nginx-served frontend that proxies `/api`, `/exports` and `/uploads` to the backend container.
+
+## Configuration
+
+Important environment variables:
+
+- `DATABASE_URL`
+- `DATABASE_USERNAME`
+- `DATABASE_PASSWORD`
+- `OPSHUB_SECURITY_PASSWORD`
+- `OPSHUB_SECURITY_ALLOWED_ORIGINS`
+
+The `prod` profile requires database credentials and `OPSHUB_SECURITY_PASSWORD`. The `local` profile keeps safe demo defaults for fast development.
+
+## Quality checks
+
+Backend:
+
+```bash
+./mvnw test
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm ci
+npm run build
+```
+
+GitHub Actions runs backend tests, frontend build and Docker image build checks on push and pull request.
