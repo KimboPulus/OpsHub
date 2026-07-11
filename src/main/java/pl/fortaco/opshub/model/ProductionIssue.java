@@ -4,6 +4,7 @@ import jakarta.persistence.CascadeType;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -48,10 +49,10 @@ public class ProductionIssue {
     @ManyToOne
     private WorkOrder workOrder;
 
-    @OneToMany(mappedBy = "productionIssue", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "productionIssue", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<IssueActivity> activities = new ArrayList<>();
 
-    @OneToMany(mappedBy = "productionIssue", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "productionIssue", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<IssueAttachment> attachments = new ArrayList<>();
 
     public Integer getId() {

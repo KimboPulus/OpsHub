@@ -1,8 +1,11 @@
 package pl.fortaco.opshub.service;
 
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
+
+import java.util.Locale;
 
 @Component
 public class ReportingSchema implements CommandLineRunner {
@@ -15,8 +18,9 @@ public class ReportingSchema implements CommandLineRunner {
     @Override
     public void run(String... args) {
         createEnergyStagingTable();
-        seedEnergyStaging();
-        createViews();
+        boolean postgres = isPostgres();
+        seedEnergyStaging(postgres);
+        createViews(postgres);
     }
 
     private void createEnergyStagingTable() {
@@ -33,20 +37,31 @@ public class ReportingSchema implements CommandLineRunner {
             """);
     }
 
-    private void seedEnergyStaging() {
+    private void seedEnergyStaging(boolean postgres) {
         Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM iot_energy_staging", Integer.class);
         if (count != null && count > 0) {
             return;
         }
 
+        String yesterday = postgres ? "CURRENT_DATE - INTERVAL '1 day'" : "DATEADD('DAY', -1, CURRENT_DATE)";
+
         jdbc.update("INSERT INTO iot_energy_staging (reading_day, shift_name, machine_code, production_line, energy_kwh, produced_units) VALUES (CURRENT_DATE, 'A', 'LASER-01', 'WELD-A', 318.40, 54)");
         jdbc.update("INSERT INTO iot_energy_staging (reading_day, shift_name, machine_code, production_line, energy_kwh, produced_units) VALUES (CURRENT_DATE, 'A', 'WELD-03', 'WELD-A', 211.70, 43)");
         jdbc.update("INSERT INTO iot_energy_staging (reading_day, shift_name, machine_code, production_line, energy_kwh, produced_units) VALUES (CURRENT_DATE, 'B', 'PRESS-02', 'ASM-2', 184.30, 38)");
-        jdbc.update("INSERT INTO iot_energy_staging (reading_day, shift_name, machine_code, production_line, energy_kwh, produced_units) VALUES (DATEADD('DAY', -1, CURRENT_DATE), 'B', 'LASER-01', 'WELD-A', 295.20, 61)");
-        jdbc.update("INSERT INTO iot_energy_staging (reading_day, shift_name, machine_code, production_line, energy_kwh, produced_units) VALUES (DATEADD('DAY', -1, CURRENT_DATE), 'C', 'PRESS-02', 'ASM-2', 201.90, 41)");
+        jdbc.update("INSERT INTO iot_energy_staging (reading_day, shift_name, machine_code, production_line, energy_kwh, produced_units) VALUES (" + yesterday + ", 'B', 'LASER-01', 'WELD-A', 295.20, 61)");
+        jdbc.update("INSERT INTO iot_energy_staging (reading_day, shift_name, machine_code, production_line, energy_kwh, produced_units) VALUES (" + yesterday + ", 'C', 'PRESS-02', 'ASM-2', 201.90, 41)");
     }
 
-    private void createViews() {
+    private void createViews(boolean postgres) {
+        if (postgres) {
+            createPostgresViews();
+            return;
+        }
+
+        createH2Views();
+    }
+
+    private void createH2Views() {
         jdbc.execute("""
             CREATE OR REPLACE VIEW rpt_issue_aging AS
             SELECT
@@ -114,5 +129,82 @@ public class ReportingSchema implements CommandLineRunner {
             FROM iot_energy_staging
             GROUP BY reading_day, shift_name, machine_code, production_line
             """);
+    }
+
+    private void createPostgresViews() {
+        jdbc.execute("""
+            CREATE OR REPLACE VIEW rpt_issue_aging AS
+            SELECT
+                pi.id AS issue_id,
+                pi.title,
+                pi.status,
+                pi.severity,
+                pi.category,
+                pi.assigned_team,
+                COALESCE(m.code, 'NO-MACHINE') AS machine_code,
+                COALESCE(pl.code, 'NO-LINE') AS production_line,
+                wo.sap_order_number,
+                pi.created_at,
+                pi.resolved_at,
+                CAST(FLOOR(EXTRACT(EPOCH FROM (COALESCE(pi.resolved_at, CURRENT_TIMESTAMP) - pi.created_at)) / 3600) AS INTEGER) AS age_hours,
+                CASE WHEN pi.status IN ('RESOLVED', 'VERIFIED') THEN 0 ELSE 1 END AS open_flag,
+                pi.downtime_minutes
+            FROM production_issue pi
+            LEFT JOIN machine m ON pi.machine_id = m.id
+            LEFT JOIN production_line pl ON m.production_line_id = pl.id
+            LEFT JOIN work_order wo ON pi.work_order_id = wo.id
+            """);
+
+        jdbc.execute("""
+            CREATE OR REPLACE VIEW rpt_downtime_by_machine AS
+            SELECT
+                COALESCE(m.code, 'NO-MACHINE') AS machine_code,
+                COALESCE(m.name, 'No machine assigned') AS machine_name,
+                COALESCE(pl.code, 'NO-LINE') AS production_line,
+                COUNT(pi.id) AS issue_count,
+                SUM(pi.downtime_minutes) AS downtime_minutes,
+                SUM(CASE WHEN pi.status IN ('RESOLVED', 'VERIFIED') THEN 0 ELSE 1 END) AS open_issue_count,
+                MAX(pi.created_at) AS last_issue_at
+            FROM production_issue pi
+            LEFT JOIN machine m ON pi.machine_id = m.id
+            LEFT JOIN production_line pl ON m.production_line_id = pl.id
+            GROUP BY COALESCE(m.code, 'NO-MACHINE'), COALESCE(m.name, 'No machine assigned'), COALESCE(pl.code, 'NO-LINE')
+            """);
+
+        jdbc.execute("""
+            CREATE OR REPLACE VIEW rpt_oee_daily AS
+            SELECT
+                CAST(pi.created_at AS DATE) AS report_date,
+                COALESCE(pl.code, 'NO-LINE') AS production_line,
+                COUNT(pi.id) AS issue_count,
+                SUM(pi.downtime_minutes) AS downtime_minutes,
+                ROUND(((480 - LEAST(480, SUM(pi.downtime_minutes))) * 100.0 / 480)::numeric, 1) AS availability_proxy_percent,
+                ROUND((((480 - LEAST(480, SUM(pi.downtime_minutes))) * 100.0 / 480) * 0.92 * 0.96)::numeric, 1) AS oee_proxy_percent
+            FROM production_issue pi
+            LEFT JOIN machine m ON pi.machine_id = m.id
+            LEFT JOIN production_line pl ON m.production_line_id = pl.id
+            GROUP BY CAST(pi.created_at AS DATE), COALESCE(pl.code, 'NO-LINE')
+            """);
+
+        jdbc.execute("""
+            CREATE OR REPLACE VIEW rpt_energy_per_unit AS
+            SELECT
+                reading_day AS report_date,
+                shift_name,
+                machine_code,
+                production_line,
+                SUM(energy_kwh) AS total_energy_kwh,
+                SUM(produced_units) AS produced_units,
+                ROUND((SUM(energy_kwh) / NULLIF(SUM(produced_units), 0))::numeric, 3) AS energy_kwh_per_unit
+            FROM iot_energy_staging
+            GROUP BY reading_day, shift_name, machine_code, production_line
+            """);
+    }
+
+    private boolean isPostgres() {
+        String productName = jdbc.execute((ConnectionCallback<String>) connection ->
+            connection.getMetaData().getDatabaseProductName());
+
+        return productName != null && productName.toLowerCase(Locale.ROOT).contains("postgresql");
     }
 }

@@ -9,13 +9,13 @@ import java.util.List;
 import java.util.Optional;
 
 public interface ProductionIssueRepository extends JpaRepository<ProductionIssue, Integer> {
-    @EntityGraph(attributePaths = {"machine", "machine.productionLine", "workOrder"})
+    @EntityGraph(attributePaths = {"machine", "machine.productionLine", "workOrder"}, type = EntityGraph.EntityGraphType.LOAD)
     List<ProductionIssue> findAllByOrderByCreatedAtDesc();
 
-    @EntityGraph(attributePaths = {"machine", "machine.productionLine", "workOrder"})
+    @EntityGraph(attributePaths = {"machine", "machine.productionLine", "workOrder"}, type = EntityGraph.EntityGraphType.LOAD)
     Optional<ProductionIssue> findDetailedById(Integer id);
 
-    @EntityGraph(attributePaths = {"machine", "workOrder", "activities"})
+    @EntityGraph(attributePaths = {"machine", "workOrder", "activities"}, type = EntityGraph.EntityGraphType.LOAD)
     @Query("""
         select issue from ProductionIssue issue
         where issue.id <> :id
