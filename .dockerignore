@@ -1,0 +1,12 @@
+.git
+.github
+.idea
+.vscode
+target
+data
+uploads
+*.log
+frontend/node_modules
+frontend/dist
+node_modules
+dist

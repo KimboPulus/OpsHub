@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:-opshub}
+      POSTGRES_USER: ${DATABASE_USERNAME:-opshub}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-opshub_dev_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USERNAME:-opshub} -d ${DATABASE_NAME:-opshub}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DATABASE_URL: jdbc:postgresql://db:5432/${DATABASE_NAME:-opshub}
+      DATABASE_USERNAME: ${DATABASE_USERNAME:-opshub}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-opshub_dev_password}
+      OPSHUB_SECURITY_PASSWORD: ${OPSHUB_SECURITY_PASSWORD:-opshub_dev_password}
+      OPSHUB_SECURITY_ALLOWED_ORIGINS: ${OPSHUB_SECURITY_ALLOWED_ORIGINS:-http://localhost:5173}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    volumes:
+      - issue-uploads:/app/uploads
+
+  web:
+    build:
+      context: ./frontend
+    depends_on:
+      - api
+    ports:
+      - "5173:80"
+
+volumes:
+  postgres-data:
+  issue-uploads:
