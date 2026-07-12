@@ -82,4 +82,64 @@ class IssueRulesTests {
 
         assertEquals(expected, IssueRules.shouldTriggerActiveNotification(issue));
     }
+
+    @ParameterizedTest
+    @CsvSource({
+        "CRITICAL,15,120",
+        "HIGH,60,480",
+        "MEDIUM,240,1440",
+        "LOW,1440,4320"
+    })
+    void slaTargetsDependOnSeverity(IssueSeverity severity, int responseMinutes, int resolutionMinutes) {
+        assertEquals(responseMinutes, IssueRules.responseTargetMinutes(severity));
+        assertEquals(resolutionMinutes, IssueRules.resolutionTargetMinutes(severity));
+    }
+
+    @Test
+    void lifecycleTargetsAreStampedFromCreationTime() {
+        Instant createdAt = Instant.parse("2026-01-10T12:00:00Z");
+        ProductionIssue issue = new ProductionIssue();
+        issue.setSeverity(IssueSeverity.HIGH);
+
+        IssueRules.assignLifecycleTargets(issue, createdAt);
+
+        assertEquals(createdAt, issue.getCreatedAt());
+        assertEquals(createdAt, issue.getUpdatedAt());
+        assertEquals(createdAt.plus(60, ChronoUnit.MINUTES), issue.getResponseDueAt());
+        assertEquals(createdAt.plus(480, ChronoUnit.MINUTES), issue.getResolutionDueAt());
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "NEW,IN_PROGRESS,false,true",
+        "NEW,RESOLVED,false,false",
+        "NEW,RESOLVED,true,true",
+        "RESOLVED,VERIFIED,true,true",
+        "VERIFIED,NEW,true,false"
+    })
+    void transitionMatrixSeparatesOperatorAndLeaderActions(IssueStatus from, IssueStatus to, boolean leader, boolean expected) {
+        assertEquals(expected, IssueRules.canTransition(from, to, leader));
+    }
+
+    @Test
+    void openIssueBreachesResolutionAfterDueTime() {
+        Instant now = Instant.parse("2026-01-10T12:00:00Z");
+        ProductionIssue issue = new ProductionIssue();
+        issue.setStatus(IssueStatus.IN_PROGRESS);
+        issue.setResolutionDueAt(now.minus(1, ChronoUnit.MINUTES));
+
+        assertTrue(IssueRules.resolutionBreached(issue, now));
+        assertTrue(IssueRules.shouldEscalate(issue, now));
+    }
+
+    @Test
+    void acknowledgedIssueDoesNotBreachResponseSla() {
+        Instant now = Instant.parse("2026-01-10T12:00:00Z");
+        ProductionIssue issue = new ProductionIssue();
+        issue.setStatus(IssueStatus.IN_PROGRESS);
+        issue.setResponseDueAt(now.minus(1, ChronoUnit.MINUTES));
+        issue.setAcknowledgedAt(now.minus(2, ChronoUnit.MINUTES));
+
+        assertFalse(IssueRules.responseBreached(issue, now));
+    }
 }
