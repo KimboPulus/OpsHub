@@ -30,6 +30,9 @@ The newest part is a Power Platform / BI readiness screen. It shows how the same
 - issue creation flow for operators
 - machine QR entry screen
 - issue details with status changes and comments
+- operator/leader workflow permissions
+- response and resolution SLA tracking
+- auditable actor metadata on issue changes
 - image attachments
 - similar issue lookup
 - KPI/reporting page
@@ -79,7 +82,11 @@ The frontend talks to the backend through `/api`, `/exports` and `/uploads`. The
 
 The Power/BI page talks to `/api/reporting/power-platform`. The backend builds the reporting layer from SQL views like `rpt_issue_aging`, `rpt_downtime_by_machine`, `rpt_oee_daily` and `rpt_energy_per_unit`.
 
-The tests cover the important behavior: issue rules, login/session security, seeding, API endpoints, comments, status changes, CSV/PDF exports, upload validation, IoT analytics and the reporting views.
+The tests cover the important behavior: issue rules, login/session security, workflow permissions, seeding, API endpoints, comments, status changes, CSV/PDF exports, upload validation, IoT analytics and the reporting views.
+
+The workflow layer separates operator and leader capabilities. Operators can create issues, comment and start work. Leaders can resolve, verify, delete closed issues and sync downtime to the simulated ERP endpoint.
+
+Each production issue carries lifecycle metadata: creator, last update time, acknowledgement time, response deadline, resolution deadline and escalation timestamp.
 
 ## Run locally
 
