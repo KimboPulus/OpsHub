@@ -9,6 +9,7 @@ frontend/node_modules/
 frontend/dist/
 frontend/test-results/
 frontend/playwright-report/
+docs/private/
 .tools/
 scripts/Start-OpsHubCloudflareTunnel.ps1
 !.mvn/wrapper/maven-wrapper.jar
