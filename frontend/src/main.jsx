@@ -175,6 +175,7 @@ function App() {
   if (issueMatch) page = <IssueDetails id={Number(issueMatch[1])} go={go} onChanged={loadState} user={user} />
   if (path === '/machines/qr') page = <MachineQr machines={state.machines} go={go} />
   if (path === '/reports') page = <Reports state={state} />
+  if (path === '/audit') page = <AuditTrail go={go} />
   if (path === '/iot') page = <FactoryIoT />
   if (path === '/platform') page = <PowerPlatform state={state} go={go} />
 
@@ -194,6 +195,7 @@ function Shell({ go, path, user, onLogout, eventStatus }) {
     ['/', 'Start'],
     ['/issues', 'Produkcja'],
     ['/reports', 'Raporty'],
+    ['/audit', 'Audit'],
     ['/iot', 'IoT'],
     ['/machines/qr', 'QR'],
     ['/platform', 'Power/BI'],
@@ -782,6 +784,99 @@ function Reports({ state }) {
   )
 }
 
+function AuditTrail({ go }) {
+  const [filters, setFilters] = useState({ type: '', severity: '', actor: '', machine: '', text: '' })
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  const query = useMemo(() => {
+    const params = new URLSearchParams()
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value.trim()) params.set(key, value.trim())
+    })
+    params.set('limit', '200')
+    return params.toString()
+  }, [filters])
+
+  async function loadAudit() {
+    setError('')
+    setLoading(true)
+    try {
+      const response = await apiFetch(`/api/audit/events?${query}`)
+      if (!response.ok) throw new Error('Audit search failed.')
+      const data = await response.json()
+      setRows(data.items ?? [])
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadAudit()
+  }, [query])
+
+  function update(name, value) {
+    setFilters(current => ({ ...current, [name]: value }))
+  }
+
+  return (
+    <div className="ops-page">
+      <PageHeader eyebrow="Operations audit" title="Audit timeline" text="Searchable workflow history for status changes, comments, evidence and integration actions.">
+        <button className="btn btn-outline-dark" onClick={loadAudit}>Refresh</button>
+        <ExportButton href={`/exports/audit-events.csv?${query}`}>Audit CSV</ExportButton>
+      </PageHeader>
+
+      {error && <div className="alert danger mb">{error}</div>}
+
+      <div className="ops-panel">
+        <div className="form-grid audit-filters">
+          <SelectField label="Type" value={filters.type} onChange={value => update('type', value)} options={{ '': 'All', SYSTEM: 'System', COMMENT: 'Comment', STATUS_CHANGE: 'Status change' }} />
+          <SelectField label="Severity" value={filters.severity} onChange={value => update('severity', value)} options={{ '': 'All', LOW: 'Low', MEDIUM: 'Medium', HIGH: 'High', CRITICAL: 'Critical' }} />
+          <Field label="Actor"><input value={filters.actor} onChange={event => update('actor', event.target.value)} placeholder="Leader, Operator, SLA engine..." /></Field>
+          <Field label="Machine"><input value={filters.machine} onChange={event => update('machine', event.target.value)} placeholder="LASER-01" /></Field>
+          <Field className="wide" label="Search text"><input value={filters.text} onChange={event => update('text', event.target.value)} placeholder="message, issue title, description..." /></Field>
+        </div>
+      </div>
+
+      <div className="ops-panel mt">
+        <div className="section-heading">
+          <div>
+            <h2>Audit events</h2>
+            <p>{loading ? 'Loading audit events...' : `${rows.length} events found`}</p>
+          </div>
+        </div>
+        <div className="table-wrap">
+          <table className="ops-table">
+            <thead>
+              <tr>
+                <th>Time</th><th>Issue</th><th>Type</th><th>Actor</th><th>Machine</th><th>Severity</th><th>Message</th><th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(row => (
+                <tr key={row.id}>
+                  <td>{dateTime(row.createdAt)}</td>
+                  <td><strong>{row.issueTitle}</strong><small>#{row.issueId} / {statusText[row.issueStatus] ?? row.issueStatus}</small></td>
+                  <td><Badge tone={auditTone(row.type)}>{auditTypeText(row.type)}</Badge></td>
+                  <td>{row.actor}</td>
+                  <td>{row.machineCode || <span className="muted">No machine</span>}</td>
+                  <td><Badge tone={severityTone(row.issueSeverity)}>{severityText[row.issueSeverity] ?? row.issueSeverity}</Badge></td>
+                  <td>{row.message}</td>
+                  <td><button className="btn btn-sm btn-outline-dark" onClick={() => go(`/issues/${row.issueId}`)}>Open</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {!loading && rows.length === 0 && <div className="empty-state">No audit events match current filters.</div>}
+      </div>
+    </div>
+  )
+}
+
 function FactoryIoT() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -1267,6 +1362,14 @@ function dateTime(value) {
 
 function activityType(type) {
   return { COMMENT: 'Komentarz', STATUS_CHANGE: 'Zmiana statusu', SYSTEM: 'System' }[type] ?? 'Aktywność'
+}
+
+function auditTypeText(type) {
+  return { COMMENT: 'Comment', STATUS_CHANGE: 'Status change', SYSTEM: 'System' }[type] ?? type
+}
+
+function auditTone(type) {
+  return { COMMENT: 'info', STATUS_CHANGE: 'warning', SYSTEM: 'dark' }[type] ?? 'neutral'
 }
 
 createRoot(document.getElementById('root')).render(<App />)
