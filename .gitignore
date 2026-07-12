@@ -7,6 +7,8 @@ node_modules/
 dist/
 frontend/node_modules/
 frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
 .tools/
 scripts/Start-OpsHubCloudflareTunnel.ps1
 !.mvn/wrapper/maven-wrapper.jar
