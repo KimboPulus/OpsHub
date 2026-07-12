@@ -16,11 +16,23 @@ public class AuthController {
             .stream()
             .map(GrantedAuthority::getAuthority)
             .toList();
+        boolean leader = roles.contains("ROLE_LEADER");
+        boolean operator = roles.contains("ROLE_OPERATOR");
 
         return Map.of(
             "username", authentication.getName(),
             "displayName", displayName(authentication.getName()),
-            "roles", roles
+            "roles", roles,
+            "capabilities", Map.of(
+                "canCreateIssue", operator || leader,
+                "canComment", operator || leader,
+                "canAttachEvidence", operator || leader,
+                "canStartWork", operator || leader,
+                "canResolveIssue", leader,
+                "canVerifyIssue", leader,
+                "canDeleteIssue", leader,
+                "canSyncDowntime", leader
+            )
         );
     }
 

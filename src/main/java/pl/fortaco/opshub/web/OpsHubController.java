@@ -11,6 +11,8 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -44,6 +46,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
+import static org.springframework.http.HttpStatus.FORBIDDEN;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 @RestController
@@ -110,13 +113,25 @@ public class OpsHubController {
     }
 
     @PostMapping("/api/issues")
-    public ProductionIssue createIssue(@Valid @RequestBody IssueRequest request) {
+    public ProductionIssue createIssue(@Valid @RequestBody IssueRequest request, Authentication authentication) {
+        Instant now = Instant.now();
+        String actor = actorDisplay(authentication);
         ProductionIssue issue = new ProductionIssue();
         applyRequest(issue, request);
-        issue.setCreatedAt(Instant.now());
+
+        if (!isLeader(authentication) && issue.getStatus() != IssueStatus.NEW) {
+            throw new ResponseStatusException(FORBIDDEN, "Tworzenie zgloszenia w tym statusie wymaga roli lidera.");
+        }
+
+        issue.setCreatedBy(actor);
+        IssueRules.assignLifecycleTargets(issue, now);
+
+        if (issue.getStatus() != IssueStatus.NEW) {
+            issue.setAcknowledgedAt(now);
+        }
 
         if (issue.getStatus() == IssueStatus.RESOLVED || issue.getStatus() == IssueStatus.VERIFIED) {
-            issue.setResolvedAt(Instant.now());
+            issue.setResolvedAt(now);
         }
 
         addActivity(issue, IssueActivityType.SYSTEM, "Fortaco Ops Hub",
@@ -131,41 +146,56 @@ public class OpsHubController {
     }
 
     @PatchMapping("/api/issues/{id}/status")
-    public ProductionIssue updateStatus(@PathVariable Integer id, @RequestBody StatusRequest request) {
+    public ProductionIssue updateStatus(@PathVariable Integer id, @RequestBody StatusRequest request, Authentication authentication) {
         ProductionIssue issue = findIssue(id);
         IssueStatus status = request.status();
+        boolean leader = isLeader(authentication);
 
         if (status == null) {
             throw new ResponseStatusException(BAD_REQUEST, "Status jest wymagany.");
         }
 
+        if (!IssueRules.canTransition(issue.getStatus(), status, leader)) {
+            if (!leader) {
+                throw new ResponseStatusException(FORBIDDEN, "Ta zmiana statusu wymaga roli lidera.");
+            }
+            throw new ResponseStatusException(BAD_REQUEST, "Niedozwolona zmiana statusu w tym etapie.");
+        }
+
+        Instant now = Instant.now();
         issue.setStatus(status);
+        issue.setUpdatedAt(now);
+
+        if (status != IssueStatus.NEW && issue.getAcknowledgedAt() == null) {
+            issue.setAcknowledgedAt(now);
+        }
 
         if (status == IssueStatus.NEW || status == IssueStatus.IN_PROGRESS) {
             issue.setResolvedAt(null);
         }
 
         if ((status == IssueStatus.RESOLVED || status == IssueStatus.VERIFIED) && issue.getResolvedAt() == null) {
-            issue.setResolvedAt(Instant.now());
+            issue.setResolvedAt(now);
         }
 
-        addActivity(issue, IssueActivityType.STATUS_CHANGE, "System", "Status zmieniony na: " + translateStatus(status));
+        applyEscalationIfNeeded(issue, now);
+        addActivity(issue, IssueActivityType.STATUS_CHANGE, actorDisplay(authentication), "Status zmieniony na: " + translateStatus(status));
         return issues.save(issue);
     }
 
     @PostMapping("/api/issues/{id}/comments")
-    public ProductionIssue addComment(@PathVariable Integer id, @Valid @RequestBody CommentRequest request) {
+    public ProductionIssue addComment(@PathVariable Integer id, @Valid @RequestBody CommentRequest request, Authentication authentication) {
         ProductionIssue issue = findIssue(id);
-        String author = request.createdBy() == null || request.createdBy().isBlank()
-            ? "Operator"
-            : request.createdBy().trim();
+        Instant now = Instant.now();
 
-        addActivity(issue, IssueActivityType.COMMENT, author, request.message().trim());
+        issue.setUpdatedAt(now);
+        applyEscalationIfNeeded(issue, now);
+        addActivity(issue, IssueActivityType.COMMENT, actorDisplay(authentication), request.message().trim());
         return issues.save(issue);
     }
 
     @PostMapping(value = "/api/issues/{id}/attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ProductionIssue addAttachment(@PathVariable Integer id, @RequestParam("file") MultipartFile file) throws IOException {
+    public ProductionIssue addAttachment(@PathVariable Integer id, @RequestParam("file") MultipartFile file, Authentication authentication) throws IOException {
         ProductionIssue issue = findIssue(id);
 
         try {
@@ -189,12 +219,15 @@ public class OpsHubController {
         attachment.setRelativePath("/uploads/issues/" + storedFileName);
         attachment.setUploadedAt(Instant.now());
         issue.getAttachments().add(attachment);
+        issue.setUpdatedAt(Instant.now());
+        addActivity(issue, IssueActivityType.SYSTEM, actorDisplay(authentication), "Dodano zalacznik: " + attachment.getFileName());
 
         return issues.save(issue);
     }
 
     @DeleteMapping("/api/issues/{id}")
-    public void deleteIssue(@PathVariable Integer id) {
+    public void deleteIssue(@PathVariable Integer id, Authentication authentication) {
+        ensureLeader(authentication, "Usuwanie zgloszen wymaga roli lidera.");
         ProductionIssue issue = findIssue(id);
 
         if (!IssueRules.canDelete(issue)) {
@@ -235,16 +268,22 @@ public class OpsHubController {
     }
 
     @PostMapping("/api/issues/{id}/downtime-sync")
-    public Map<String, Object> downtimeSync(@PathVariable Integer id) {
+    public Map<String, Object> downtimeSync(@PathVariable Integer id, Authentication authentication) {
+        ensureLeader(authentication, "Synchronizacja przestoju wymaga roli lidera.");
         ProductionIssue issue = findIssue(id);
         String order = issue.getWorkOrder() == null ? "Brak zlecenia" : issue.getWorkOrder().getSapOrderNumber();
+        Instant now = Instant.now();
+
+        issue.setUpdatedAt(now);
+        addActivity(issue, IssueActivityType.SYSTEM, actorDisplay(authentication), "Przestoj wyslany do symulowanego ERP.");
+        issues.save(issue);
 
         return Map.of(
             "target", "Symulowane potwierdzenie przestoju do ERP",
             "issueId", issue.getId(),
             "workOrder", order,
             "downtimeMinutes", issue.getDowntimeMinutes(),
-            "syncedAt", Instant.now()
+            "syncedAt", now
         );
     }
 
@@ -366,6 +405,44 @@ public class OpsHubController {
         activity.setMessage(message);
         activity.setCreatedAt(Instant.now());
         issue.getActivities().add(activity);
+    }
+
+    private static void applyEscalationIfNeeded(ProductionIssue issue, Instant now) {
+        if (!IssueRules.shouldEscalate(issue, now)) {
+            return;
+        }
+
+        issue.setEscalatedAt(now);
+        addActivity(issue, IssueActivityType.SYSTEM, "SLA engine", "Przekroczono termin rozwiazania. Eskalacja do lidera zmiany.");
+    }
+
+    private static void ensureLeader(Authentication authentication, String message) {
+        if (!isLeader(authentication)) {
+            throw new ResponseStatusException(FORBIDDEN, message);
+        }
+    }
+
+    private static boolean isLeader(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return true;
+        }
+
+        return authentication.getAuthorities()
+            .stream()
+            .map(GrantedAuthority::getAuthority)
+            .anyMatch("ROLE_LEADER"::equals);
+    }
+
+    private static String actorDisplay(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return "System";
+        }
+
+        return switch (authentication.getName()) {
+            case "lider" -> "Lider zmiany";
+            case "operator" -> "Operator";
+            default -> authentication.getName();
+        };
     }
 
     private static ResponseEntity<byte[]> attachment(byte[] bytes, String contentType, String fileName) {

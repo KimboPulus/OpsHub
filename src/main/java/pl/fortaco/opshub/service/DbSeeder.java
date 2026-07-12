@@ -169,7 +169,12 @@ public class DbSeeder implements CommandLineRunner {
         issue.setNotificationChannel(channel);
         issue.setMachine(machine);
         issue.setWorkOrder(order);
-        issue.setCreatedAt(Instant.now().minus(downtime, ChronoUnit.MINUTES));
+        issue.setCreatedBy("Seed demo");
+        Instant createdAt = Instant.now().minus(downtime, ChronoUnit.MINUTES);
+        IssueRules.assignLifecycleTargets(issue, createdAt);
+        if (status != IssueStatus.NEW) {
+            issue.setAcknowledgedAt(createdAt.plus(10, ChronoUnit.MINUTES));
+        }
         return issue;
     }
 
