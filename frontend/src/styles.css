@@ -109,6 +109,11 @@ p {
   font-weight: 800;
 }
 
+.muted-pill {
+  color: #374151;
+  background: #eef2f6;
+}
+
 .topbar nav button {
   min-height: 2.4rem;
   padding: 0 0.8rem;
@@ -375,8 +380,13 @@ p {
 }
 
 .readiness-grid,
-.handoff-grid {
+.handoff-grid,
+.lifecycle-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.lifecycle-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .ops-card,
@@ -581,6 +591,16 @@ small {
 .badge.dark {
   color: #ffffff;
   background: #111827;
+}
+
+.sla-stack {
+  display: grid;
+  gap: 0.3rem;
+  justify-items: start;
+}
+
+.sla-stack small {
+  color: var(--muted);
 }
 
 .table-wrap {
@@ -1074,7 +1094,8 @@ small {
   .platform-grid,
   .details-grid,
   .readiness-grid,
-  .handoff-grid {
+  .handoff-grid,
+  .lifecycle-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1123,6 +1144,7 @@ small {
   .details-grid,
   .readiness-grid,
   .handoff-grid,
+  .lifecycle-grid,
   .ops-command-strip,
   .form-grid,
   .comment-form {

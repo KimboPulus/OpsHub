@@ -152,7 +152,7 @@ function App() {
   if (path === '/issues') page = <Issues state={state} go={go} />
   if (path === '/issues/create') page = <CreateIssue state={state} go={go} onSaved={refreshAndGo} />
   if (qrMachineMatch) page = <CreateIssue state={state} go={go} onSaved={refreshAndGo} machineCode={decodeURIComponent(qrMachineMatch[1])} />
-  if (issueMatch) page = <IssueDetails id={Number(issueMatch[1])} go={go} onChanged={loadState} />
+  if (issueMatch) page = <IssueDetails id={Number(issueMatch[1])} go={go} onChanged={loadState} user={user} />
   if (path === '/machines/qr') page = <MachineQr machines={state.machines} go={go} />
   if (path === '/reports') page = <Reports state={state} />
   if (path === '/iot') page = <FactoryIoT />
@@ -192,6 +192,7 @@ function Shell({ go, path, user, onLogout }) {
       </nav>
       <div className="session-tools">
         <span className="session-pill">{user.displayName}</span>
+        <span className="session-pill muted-pill">{roleLabel(user)}</span>
         <button className="btn btn-outline-dark" onClick={onLogout}>Wyloguj</button>
       </div>
       <button className="btn btn-dark" onClick={() => go('/issues/create')}>Nowe zgłoszenie</button>
@@ -384,6 +385,7 @@ function Issues({ state, go }) {
             <thead>
               <tr>
                 <th>Zgłoszenie</th><th>Maszyna</th><th>Zlecenie</th><th>Kategoria</th><th>Priorytet</th><th>Status</th><th>Przekazane do</th><th>Przestój</th><th>Akcje</th>
+                <th>SLA</th>
               </tr>
             </thead>
             <tbody>
@@ -398,6 +400,7 @@ function Issues({ state, go }) {
                   <td><strong>{issue.assignedTeam}</strong><small>{issue.notificationChannel}</small></td>
                   <td><strong>{issue.downtimeMinutes} min</strong></td>
                   <td><button className="btn btn-sm btn-outline-dark" onClick={() => go(`/issues/${issue.id}`)}>Szczegóły</button></td>
+                  <td><SlaBadge issue={issue} /></td>
                 </tr>
               ))}
             </tbody>
@@ -510,13 +513,13 @@ function CreateIssue({ state, go, onSaved, machineCode }) {
   )
 }
 
-function IssueDetails({ id, go, onChanged }) {
+function IssueDetails({ id, go, onChanged, user }) {
   const [issue, setIssue] = useState(null)
   const [similar, setSimilar] = useState({ total: 0, page: 1, pageSize: 3, items: [] })
   const [showSimilar, setShowSimilar] = useState(false)
   const [comment, setComment] = useState('')
-  const [author, setAuthor] = useState('Operator')
   const [error, setError] = useState('')
+  const [actionError, setActionError] = useState('')
   const closed = issue?.status === 'RESOLVED' || issue?.status === 'VERIFIED'
 
   async function load() {
@@ -540,11 +543,16 @@ function IssueDetails({ id, go, onChanged }) {
   }, [id])
 
   async function setStatus(status) {
-    await apiFetch(`/api/issues/${id}/status`, {
+    setActionError('')
+    const response = await apiFetch(`/api/issues/${id}/status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),
     })
+    if (!response.ok) {
+      setActionError(await responseError(response, 'Status change failed.'))
+      return
+    }
     await load()
     await onChanged()
   }
@@ -552,11 +560,16 @@ function IssueDetails({ id, go, onChanged }) {
   async function addComment(event) {
     event.preventDefault()
     if (!comment.trim()) return
-    await apiFetch(`/api/issues/${id}/comments`, {
+    setActionError('')
+    const response = await apiFetch(`/api/issues/${id}/comments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: comment, createdBy: author }),
+      body: JSON.stringify({ message: comment }),
     })
+    if (!response.ok) {
+      setActionError(await responseError(response, 'Comment save failed.'))
+      return
+    }
     setComment('')
     await load()
     await onChanged()
@@ -566,9 +579,25 @@ function IssueDetails({ id, go, onChanged }) {
     const confirmed = window.confirm(`Na pewno usunąć zgłoszenie "${issue.title}"? Tej akcji nie da się cofnąć.`)
     if (!confirmed) return
 
-    await apiFetch(`/api/issues/${id}`, { method: 'DELETE' })
+    setActionError('')
+    const response = await apiFetch(`/api/issues/${id}`, { method: 'DELETE' })
+    if (!response.ok) {
+      setActionError(await responseError(response, 'Issue delete failed.'))
+      return
+    }
     await onChanged()
     go('/issues')
+  }
+
+  async function syncDowntime() {
+    setActionError('')
+    const response = await apiFetch(`/api/issues/${id}/downtime-sync`, { method: 'POST' })
+    if (!response.ok) {
+      setActionError(await responseError(response, 'Downtime sync failed.'))
+      return
+    }
+    await load()
+    await onChanged()
   }
 
   if (error) return <div className="ops-page"><div className="alert danger">{error}</div><button className="btn btn-outline-dark" onClick={() => go('/issues')}>Wróć do panelu</button></div>
@@ -587,6 +616,13 @@ function IssueDetails({ id, go, onChanged }) {
         <Metric label="Utworzono" value={dateTime(issue.createdAt)} note="Czas lokalny" />
       </MetricGrid>
 
+      <div className="ops-grid lifecycle-grid mt">
+        <Metric label="Response SLA" value={<SlaBadge issue={issue} kind="response" />} note={issue.acknowledgedAt ? `Acknowledged ${dateTime(issue.acknowledgedAt)}` : dueNote(issue.responseDueAt)} />
+        <Metric label="Resolution SLA" value={<SlaBadge issue={issue} kind="resolution" />} note={dueNote(issue.resolutionDueAt)} />
+        <Metric label="Created by" value={issue.createdBy ?? 'System'} note={issue.updatedAt ? `Updated ${dateTime(issue.updatedAt)}` : 'No updates yet'} />
+        <Metric danger={Boolean(issue.escalatedAt)} label="Escalation" value={issue.escalatedAt ? 'Escalated' : 'Clear'} note={issue.escalatedAt ? dateTime(issue.escalatedAt) : 'No SLA escalation'} />
+      </div>
+
       <div className="ops-grid handoff-grid mt">
         <Metric label="Przekazane do" value={issue.assignedTeam} note={issue.assignedTo || 'Osoba nieprzypisana'} />
         <Metric label="Źródło" value={issue.source} note="QR / tablet / ręczne zgłoszenie" />
@@ -602,6 +638,10 @@ function IssueDetails({ id, go, onChanged }) {
               <dt>Maszyna</dt><dd>{issue.machine ? `${issue.machine.code} - ${issue.machine.name}` : 'Brak przypisanej maszyny'}</dd>
               <dt>Zlecenie</dt><dd>{issue.workOrder ? `${issue.workOrder.sapOrderNumber} - ${issue.workOrder.materialCode}` : 'Brak powiązanego zlecenia'}</dd>
               <dt>Rozwiązano</dt><dd>{issue.resolvedAt ? dateTime(issue.resolvedAt) : 'Jeszcze nie rozwiązano'}</dd>
+              <dt>Created by</dt><dd>{issue.createdBy ?? 'System'}</dd>
+              <dt>Acknowledged</dt><dd>{issue.acknowledgedAt ? dateTime(issue.acknowledgedAt) : 'Waiting for response'}</dd>
+              <dt>Response due</dt><dd>{issue.responseDueAt ? dateTime(issue.responseDueAt) : 'Not set'}</dd>
+              <dt>Resolution due</dt><dd>{issue.resolutionDueAt ? dateTime(issue.resolutionDueAt) : 'Not set'}</dd>
             </dl>
           </Panel>
 
@@ -627,7 +667,6 @@ function IssueDetails({ id, go, onChanged }) {
 
           <Panel className="mt" title="Komentarze i historia działań">
             <form className="comment-form" onSubmit={addComment}>
-              <Field label="Autor"><input value={author} onChange={event => setAuthor(event.target.value)} /></Field>
               <Field label="Nowy komentarz"><textarea rows="3" value={comment} onChange={event => setComment(event.target.value)} /></Field>
               <button className="btn btn-dark">Dodaj komentarz</button>
             </form>
@@ -642,12 +681,18 @@ function IssueDetails({ id, go, onChanged }) {
         </div>
 
         <Panel title="Akcje operacyjne" subtitle="Szybka zmiana statusu. Każda zmiana zapisuje wpis w historii.">
+          {actionError && <div className="alert danger mb">{actionError}</div>}
           <div className="action-stack">
-            <button className="btn btn-outline-dark" onClick={() => setStatus('IN_PROGRESS')}>Oznacz jako w toku</button>
+            {can(user, 'canStartWork') && issue.status === 'NEW' && <button className="btn btn-outline-dark" onClick={() => setStatus('IN_PROGRESS')}>Start work</button>}
+            {can(user, 'canResolveIssue') && !closed ? (
             <button className="btn btn-outline-dark" onClick={() => setStatus('RESOLVED')}>Oznacz jako rozwiązane</button>
+            ) : null}
+            {can(user, 'canVerifyIssue') && issue.status === 'RESOLVED' ? (
             <button className="btn btn-outline-dark" onClick={() => setStatus('VERIFIED')}>Oznacz jako zweryfikowane</button>
-            <button className="btn btn-outline-dark" onClick={() => setStatus('NEW')}>Otwórz ponownie</button>
-            {closed ? <button className="btn btn-danger" onClick={removeIssue}>Usuń zgłoszenie</button> : <div className="muted small">Usuwanie będzie dostępne dopiero po oznaczeniu zgłoszenia jako rozwiązane albo zweryfikowane.</div>}
+            ) : null}
+            {can(user, 'canResolveIssue') && closed ? <button className="btn btn-outline-dark" onClick={() => setStatus('IN_PROGRESS')}>Reopen issue</button> : null}
+            {can(user, 'canSyncDowntime') && <button className="btn btn-outline-dark" onClick={syncDowntime}>Sync downtime to ERP</button>}
+            {can(user, 'canDeleteIssue') && closed ? <button className="btn btn-danger" onClick={removeIssue}>Delete issue</button> : <div className="muted small">Delete requires leader role and a closed issue.</div>}
           </div>
         </Panel>
       </div>
@@ -1074,6 +1119,50 @@ function SimilarIssue({ current, issue, go }) {
 
 function LoadingPage() {
   return <div className="ops-page"><div className="ops-panel"><div className="loading-line" /><div className="loading-line short" /></div></div>
+}
+
+function can(user, capability) {
+  return Boolean(user?.capabilities?.[capability])
+}
+
+function roleLabel(user) {
+  if (can(user, 'canResolveIssue')) return 'Leader'
+  if (can(user, 'canCreateIssue')) return 'Operator'
+  return 'Viewer'
+}
+
+function SlaBadge({ issue, kind = 'resolution' }) {
+  const state = slaState(issue, kind)
+  return (
+    <span className="sla-stack">
+      <Badge tone={state.tone}>{state.label}</Badge>
+      <small>{state.detail}</small>
+    </span>
+  )
+}
+
+function slaState(issue, kind) {
+  const closed = issue.status === 'RESOLVED' || issue.status === 'VERIFIED'
+  const dueAt = kind === 'response' ? issue.responseDueAt : issue.resolutionDueAt
+  const doneAt = kind === 'response' ? issue.acknowledgedAt : issue.resolvedAt
+
+  if (doneAt) return { tone: 'success', label: 'Met', detail: dateTime(doneAt) }
+  if (closed) return { tone: 'success', label: 'Closed', detail: dueNote(dueAt) }
+  if (dueAt && new Date(dueAt) < new Date()) return { tone: 'danger', label: 'Breached', detail: dueNote(dueAt) }
+  return { tone: kind === 'response' ? 'info' : 'warning', label: 'On track', detail: dueNote(dueAt) }
+}
+
+function dueNote(value) {
+  return value ? `Due ${dateTime(value)}` : 'No due date'
+}
+
+async function responseError(response, fallback) {
+  try {
+    const body = await response.json()
+    return body.detail || body.message || fallback
+  } catch {
+    return fallback
+  }
 }
 
 function visibleIssues(issues) {
