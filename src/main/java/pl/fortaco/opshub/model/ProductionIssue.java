@@ -40,8 +40,14 @@ public class ProductionIssue {
     private String assignedTo = "";
     private String source = "Operator";
     private String notificationChannel = "Panel produkcji";
+    private String createdBy = "System";
     private Instant createdAt = Instant.now();
+    private Instant updatedAt = Instant.now();
+    private Instant acknowledgedAt;
+    private Instant responseDueAt;
+    private Instant resolutionDueAt;
     private Instant resolvedAt;
+    private Instant escalatedAt;
 
     @ManyToOne
     private Machine machine;
@@ -143,6 +149,14 @@ public class ProductionIssue {
         this.notificationChannel = notificationChannel;
     }
 
+    public String getCreatedBy() {
+        return createdBy;
+    }
+
+    public void setCreatedBy(String createdBy) {
+        this.createdBy = createdBy;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
@@ -151,12 +165,52 @@ public class ProductionIssue {
         this.createdAt = createdAt;
     }
 
+    public Instant getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setUpdatedAt(Instant updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+
+    public Instant getAcknowledgedAt() {
+        return acknowledgedAt;
+    }
+
+    public void setAcknowledgedAt(Instant acknowledgedAt) {
+        this.acknowledgedAt = acknowledgedAt;
+    }
+
+    public Instant getResponseDueAt() {
+        return responseDueAt;
+    }
+
+    public void setResponseDueAt(Instant responseDueAt) {
+        this.responseDueAt = responseDueAt;
+    }
+
+    public Instant getResolutionDueAt() {
+        return resolutionDueAt;
+    }
+
+    public void setResolutionDueAt(Instant resolutionDueAt) {
+        this.resolutionDueAt = resolutionDueAt;
+    }
+
     public Instant getResolvedAt() {
         return resolvedAt;
     }
 
     public void setResolvedAt(Instant resolvedAt) {
         this.resolvedAt = resolvedAt;
+    }
+
+    public Instant getEscalatedAt() {
+        return escalatedAt;
+    }
+
+    public void setEscalatedAt(Instant escalatedAt) {
+        this.escalatedAt = escalatedAt;
     }
 
     public Machine getMachine() {
