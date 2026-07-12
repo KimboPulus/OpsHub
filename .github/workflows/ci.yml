@@ -87,6 +87,14 @@ jobs:
           cd frontend
           npm run e2e
 
+      - name: Upload smoke screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: opshub-e2e-screenshot
+          path: frontend/test-results/opshub-workflow-evidence.png
+          if-no-files-found: ignore
+
   docker:
     name: Docker build
     runs-on: ubuntu-latest

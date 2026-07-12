@@ -64,4 +64,5 @@ test('leader and operator workflow smoke', async ({ page }) => {
   await expect(page.locator('.ops-table')).toContainText(title)
   await page.getByRole('button', { name: 'Open' }).first().click()
   await expect(page.getByRole('heading', { name: title })).toBeVisible()
+  await page.screenshot({ path: 'test-results/opshub-workflow-evidence.png', fullPage: true })
 })

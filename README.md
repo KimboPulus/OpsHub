@@ -176,7 +176,7 @@ npm run e2e
 ```
 
 GitHub Actions runs backend tests, frontend build and Docker image build checks on push and pull request.
-The e2e smoke starts the Spring backend on port `18080`, starts Vite on `5173`, logs in as leader and operator, creates an issue, checks the forbidden operator resolve action, resolves as leader and verifies the audit trail.
+The e2e smoke starts the Spring backend on port `18080`, starts Vite on `5173`, logs in as leader and operator, creates an issue, checks the forbidden operator resolve action, resolves as leader and verifies the audit trail. It also writes a real Chromium screenshot to `frontend/test-results/opshub-workflow-evidence.png`, which CI uploads as an artifact.
 
 ## Operational checks
 
