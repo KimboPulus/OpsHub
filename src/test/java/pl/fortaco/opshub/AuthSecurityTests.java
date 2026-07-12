@@ -41,6 +41,12 @@ class AuthSecurityTests {
     }
 
     @Test
+    void liveOperationsStreamRequiresLogin() throws Exception {
+        mvc.perform(get("/api/events/operations"))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void loginRejectsWrongPassword() throws Exception {
         mvc.perform(post("/api/auth/login")
                 .param("username", "lider")

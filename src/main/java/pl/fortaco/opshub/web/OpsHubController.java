@@ -30,6 +30,7 @@ import pl.fortaco.opshub.repository.MachineRepository;
 import pl.fortaco.opshub.repository.ProductionIssueRepository;
 import pl.fortaco.opshub.repository.WorkOrderRepository;
 import pl.fortaco.opshub.service.IssueRules;
+import pl.fortaco.opshub.service.OperationsEventService;
 import pl.fortaco.opshub.service.SecureFileUploadPolicy;
 import pl.fortaco.opshub.service.WeeklyReportPdfBuilder;
 
@@ -59,16 +60,19 @@ public class OpsHubController {
     private final MachineRepository machines;
     private final WorkOrderRepository workOrders;
     private final IssueActivityRepository activities;
+    private final OperationsEventService events;
 
     public OpsHubController(
         ProductionIssueRepository issues,
         MachineRepository machines,
         WorkOrderRepository workOrders,
-        IssueActivityRepository activities) {
+        IssueActivityRepository activities,
+        OperationsEventService events) {
         this.issues = issues;
         this.machines = machines;
         this.workOrders = workOrders;
         this.activities = activities;
+        this.events = events;
     }
 
     @GetMapping("/api/state")
@@ -142,7 +146,9 @@ public class OpsHubController {
                 "Symulacja aktywnego powiadomienia: " + issue.getNotificationChannel() + " dla krytycznej awarii.");
         }
 
-        return issues.save(issue);
+        ProductionIssue saved = issues.save(issue);
+        events.publishIssueEvent("issue.attachment_added", saved);
+        return saved;
     }
 
     @PatchMapping("/api/issues/{id}/status")
@@ -180,7 +186,9 @@ public class OpsHubController {
 
         applyEscalationIfNeeded(issue, now);
         addActivity(issue, IssueActivityType.STATUS_CHANGE, actorDisplay(authentication), "Status zmieniony na: " + translateStatus(status));
-        return issues.save(issue);
+        ProductionIssue saved = issues.save(issue);
+        events.publishIssueEvent("issue.created", saved);
+        return saved;
     }
 
     @PostMapping("/api/issues/{id}/comments")
@@ -191,7 +199,9 @@ public class OpsHubController {
         issue.setUpdatedAt(now);
         applyEscalationIfNeeded(issue, now);
         addActivity(issue, IssueActivityType.COMMENT, actorDisplay(authentication), request.message().trim());
-        return issues.save(issue);
+        ProductionIssue saved = issues.save(issue);
+        events.publishIssueEvent("issue.status_changed", saved);
+        return saved;
     }
 
     @PostMapping(value = "/api/issues/{id}/attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -222,7 +232,9 @@ public class OpsHubController {
         issue.setUpdatedAt(Instant.now());
         addActivity(issue, IssueActivityType.SYSTEM, actorDisplay(authentication), "Dodano zalacznik: " + attachment.getFileName());
 
-        return issues.save(issue);
+        ProductionIssue saved = issues.save(issue);
+        events.publishIssueEvent("issue.commented", saved);
+        return saved;
     }
 
     @DeleteMapping("/api/issues/{id}")
@@ -235,6 +247,7 @@ public class OpsHubController {
         }
 
         issues.delete(issue);
+        events.publishIssueEvent("issue.deleted", issue);
     }
 
     @GetMapping("/api/machines")
@@ -276,7 +289,8 @@ public class OpsHubController {
 
         issue.setUpdatedAt(now);
         addActivity(issue, IssueActivityType.SYSTEM, actorDisplay(authentication), "Przestoj wyslany do symulowanego ERP.");
-        issues.save(issue);
+        ProductionIssue saved = issues.save(issue);
+        events.publishIssueEvent("issue.downtime_synced", saved);
 
         return Map.of(
             "target", "Symulowane potwierdzenie przestoju do ERP",

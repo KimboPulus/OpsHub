@@ -57,6 +57,7 @@ function App() {
   const [loginError, setLoginError] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [eventStatus, setEventStatus] = useState('offline')
 
   async function loadState() {
     setError('')
@@ -101,6 +102,25 @@ function App() {
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
   }, [])
+
+  useEffect(() => {
+    if (!user) {
+      setEventStatus('offline')
+      return undefined
+    }
+
+    const source = new EventSource(`${API_BASE}/api/events/operations`, { withCredentials: true })
+    source.onopen = () => setEventStatus('live')
+    source.onerror = () => setEventStatus('reconnecting')
+    source.addEventListener('operations', async event => {
+      const payload = JSON.parse(event.data)
+      if (payload.type !== 'stream.connected') {
+        await loadState()
+      }
+    })
+
+    return () => source.close()
+  }, [user?.username])
 
   function go(to) {
     window.history.pushState({}, '', to)
@@ -160,7 +180,7 @@ function App() {
 
   return (
     <>
-      <Shell go={go} path={path} user={user} onLogout={logout} />
+      <Shell go={go} path={path} user={user} onLogout={logout} eventStatus={eventStatus} />
       <main className="content">
         {error && <div className="ops-page"><div className="alert danger">{error} Sprawdź, czy backend działa na porcie 8080.</div></div>}
         {loading ? <LoadingPage /> : page}
@@ -169,7 +189,7 @@ function App() {
   )
 }
 
-function Shell({ go, path, user, onLogout }) {
+function Shell({ go, path, user, onLogout, eventStatus }) {
   const items = [
     ['/', 'Start'],
     ['/issues', 'Produkcja'],
@@ -193,6 +213,7 @@ function Shell({ go, path, user, onLogout }) {
       <div className="session-tools">
         <span className="session-pill">{user.displayName}</span>
         <span className="session-pill muted-pill">{roleLabel(user)}</span>
+        <span className={`session-pill live-pill ${eventStatus}`}>{liveLabel(eventStatus)}</span>
         <button className="btn btn-outline-dark" onClick={onLogout}>Wyloguj</button>
       </div>
       <button className="btn btn-dark" onClick={() => go('/issues/create')}>Nowe zgłoszenie</button>
@@ -1129,6 +1150,12 @@ function roleLabel(user) {
   if (can(user, 'canResolveIssue')) return 'Leader'
   if (can(user, 'canCreateIssue')) return 'Operator'
   return 'Viewer'
+}
+
+function liveLabel(status) {
+  if (status === 'live') return 'Live'
+  if (status === 'reconnecting') return 'Reconnecting'
+  return 'Offline'
 }
 
 function SlaBadge({ issue, kind = 'resolution' }) {

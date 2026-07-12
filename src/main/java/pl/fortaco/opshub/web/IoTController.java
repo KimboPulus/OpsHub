@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import pl.fortaco.opshub.iot.service.IoTDataService;
+import pl.fortaco.opshub.service.OperationsEventService;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -27,9 +28,11 @@ import java.util.Map;
 @RequestMapping("/api/iot")
 public class IoTController {
     private final IoTDataService iot;
+    private final OperationsEventService events;
 
-    public IoTController(IoTDataService iot) {
+    public IoTController(IoTDataService iot, OperationsEventService events) {
         this.iot = iot;
+        this.events = events;
     }
 
     @GetMapping("/health")
@@ -44,7 +47,7 @@ public class IoTController {
 
     @PostMapping("/telemetry")
     public Map<String, Object> ingestTelemetry(@Valid @RequestBody TelemetryRequest request) {
-        return iot.ingest(new IoTDataService.TelemetryCommand(
+        Map<String, Object> result = iot.ingest(new IoTDataService.TelemetryCommand(
             request.machineId(),
             request.timestamp(),
             request.vibration(),
@@ -56,11 +59,15 @@ public class IoTController {
             request.errorCode(),
             request.shift()
         ));
+        events.publish("iot.telemetry_ingested", "Telemetry ingested for machine " + request.machineId() + ".");
+        return result;
     }
 
     @PostMapping("/simulator/tick")
     public Map<String, Object> simulatorTick(@RequestParam(defaultValue = "1") int count) {
-        return iot.simulate(count);
+        Map<String, Object> result = iot.simulate(count);
+        events.publish("iot.simulator_tick", "Generated " + count + " telemetry tick(s).");
+        return result;
     }
 
     @GetMapping("/machines/{id}/telemetry")

@@ -114,6 +114,24 @@ p {
   background: #eef2f6;
 }
 
+.live-pill.live {
+  color: #166534;
+  background: #dcfce7;
+  border-color: #86efac;
+}
+
+.live-pill.reconnecting {
+  color: #92400e;
+  background: #fef3c7;
+  border-color: #facc15;
+}
+
+.live-pill.offline {
+  color: #b42318;
+  background: #fee4e2;
+  border-color: #fda29b;
+}
+
 .topbar nav button {
   min-height: 2.4rem;
   padding: 0 0.8rem;
