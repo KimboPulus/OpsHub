@@ -23,6 +23,7 @@ The newest part is a Power Platform / BI readiness screen. It shows how the same
 - GitHub Actions CI
 - Java/Spring IoT telemetry module
 - SQL reporting views for Power BI-style dashboards
+- Actuator health/info endpoints and Docker health checks
 
 ## Main parts
 
@@ -166,3 +167,27 @@ npm run build
 ```
 
 GitHub Actions runs backend tests, frontend build and Docker image build checks on push and pull request.
+
+## Operational checks
+
+Health endpoint:
+
+```bash
+curl http://localhost:8080/actuator/health
+```
+
+The Docker image and Compose API service use that endpoint as the readiness check. The custom `opshubReadiness` health indicator verifies that the application schema is reachable through the database connection.
+
+Audit export:
+
+```bash
+curl -o audit-events.csv http://localhost:8080/exports/audit-events.csv
+```
+
+Live updates:
+
+```bash
+curl -N http://localhost:8080/api/events/operations
+```
+
+The live stream is session-protected in normal browser usage, so the UI is the easiest way to demo it: log in, open two browser windows, change an issue status in one window and watch the other window refresh through the live operations stream.
