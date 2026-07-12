@@ -1,15 +1,21 @@
 package pl.fortaco.opshub;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
@@ -24,6 +30,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AuthSecurityTests {
     @Autowired
     MockMvc mvc;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
 
     @Test
     void apiRequiresLogin() throws Exception {
@@ -56,7 +65,22 @@ class AuthSecurityTests {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.username").value("lider"))
             .andExpect(jsonPath("$.displayName").value("Lider zmiany"))
-            .andExpect(jsonPath("$.roles", hasItem("ROLE_LEADER")));
+            .andExpect(jsonPath("$.roles", hasItem("ROLE_LEADER")))
+            .andExpect(jsonPath("$.capabilities.canResolveIssue").value(true))
+            .andExpect(jsonPath("$.capabilities.canDeleteIssue").value(true));
+    }
+
+    @Test
+    void operatorProfileExposesRestrictedCapabilities() throws Exception {
+        MockHttpSession session = loginAs("operator");
+
+        mvc.perform(get("/api/auth/me").session(session))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.roles", hasItem("ROLE_OPERATOR")))
+            .andExpect(jsonPath("$.capabilities.canCreateIssue").value(true))
+            .andExpect(jsonPath("$.capabilities.canStartWork").value(true))
+            .andExpect(jsonPath("$.capabilities.canResolveIssue").value(false))
+            .andExpect(jsonPath("$.capabilities.canDeleteIssue").value(false));
     }
 
     @Test
@@ -76,6 +100,67 @@ class AuthSecurityTests {
             .andExpect(jsonPath("$.machines").isArray());
     }
 
+    @Test
+    void operatorCannotCreateResolvedIssue() throws Exception {
+        MockHttpSession session = loginAs("operator");
+
+        mvc.perform(post("/api/issues")
+                .session(session)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(issuePayload("RESOLVED")))
+            .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void operatorCanStartWorkButCannotResolveIssue() throws Exception {
+        MockHttpSession session = loginAs("operator");
+        int issueId = createIssue(session, "NEW");
+
+        mvc.perform(patch("/api/issues/{id}/status", issueId)
+                .session(session)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":\"IN_PROGRESS\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("IN_PROGRESS"))
+            .andExpect(jsonPath("$.acknowledgedAt").exists());
+
+        mvc.perform(patch("/api/issues/{id}/status", issueId)
+                .session(session)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":\"RESOLVED\"}"))
+            .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void leaderCanResolveAndDeleteClosedIssue() throws Exception {
+        MockHttpSession session = loginAs("lider");
+        int issueId = createIssue(session, "NEW");
+
+        mvc.perform(patch("/api/issues/{id}/status", issueId)
+                .session(session)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":\"RESOLVED\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("RESOLVED"))
+            .andExpect(jsonPath("$.resolvedAt").exists());
+
+        mvc.perform(delete("/api/issues/{id}", issueId).session(session))
+            .andExpect(status().isOk());
+    }
+
+    @Test
+    void downtimeSyncRequiresLeaderRole() throws Exception {
+        MockHttpSession operatorSession = loginAs("operator");
+        MockHttpSession leaderSession = loginAs("lider");
+
+        mvc.perform(post("/api/issues/1/downtime-sync").session(operatorSession))
+            .andExpect(status().isForbidden());
+
+        mvc.perform(post("/api/issues/1/downtime-sync").session(leaderSession))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.target").exists());
+    }
+
     private MockHttpSession loginAs(String username) throws Exception {
         return (MockHttpSession) mvc.perform(post("/api/auth/login")
                 .param("username", username)
@@ -84,5 +169,37 @@ class AuthSecurityTests {
             .andReturn()
             .getRequest()
             .getSession(false);
+    }
+
+    private int createIssue(MockHttpSession session, String issueStatus) throws Exception {
+        MvcResult result = mvc.perform(post("/api/issues")
+                .session(session)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(issuePayload(issueStatus)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.createdBy").exists())
+            .andExpect(jsonPath("$.responseDueAt").exists())
+            .andExpect(jsonPath("$.resolutionDueAt").exists())
+            .andReturn();
+
+        JsonNode json = objectMapper.readTree(result.getResponse().getContentAsString());
+        return json.get("id").asInt();
+    }
+
+    private static String issuePayload(String status) {
+        return """
+            {
+              "title":"Workflow security test",
+              "description":"Issue created from an authenticated workflow test",
+              "category":"MACHINE_FAILURE",
+              "severity":"HIGH",
+              "status":"%s",
+              "downtimeMinutes":12,
+              "assignedTeam":"Mechanicy",
+              "notificationChannel":"Panel produkcji",
+              "machineId":1,
+              "workOrderId":1
+            }
+            """.formatted(status);
     }
 }
