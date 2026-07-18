@@ -1,12 +1,13 @@
 # OpsHub
 
-OpsHub is a small factory-floor operations app.
+OpsHub is a factory-floor workflow prototype centered on production issues:
+machines, work orders, downtime, comments, role handoff, attachments, and
+reports. IoT readings and ERP responses are simulated locally. Power/BI screen
+shows reporting mappings; it is not connected to Microsoft tenant or factory
+system.
 
-The app is built around production issues: machines, work orders, downtime, comments, handoff to teams, attachments, reports and a small simulated ERP API. It is not meant to be a finished commercial system, but it is more than just a CRUD table. I wanted it to feel like something that could actually sit on a shift leader's screen.
-
-The IoT module is part of the Spring application. It simulates machine telemetry, stores readings in H2, detects simple anomalies and feeds the IoT tab without requiring a separate service.
-
-The newest part is a Power Platform / BI readiness screen. It shows how the same factory process could map into Canvas apps, Power Automate flows, Dataverse-style tables and Power BI reporting views, while still using real data from the OpsHub backend.
+Exact ownership and integration boundaries are documented in
+[architecture](docs/architecture.md) and [current limitations](docs/limitations.md).
 
 ## Stack
 
@@ -42,8 +43,8 @@ The newest part is a Power Platform / BI readiness screen. It shows how the same
 - simulated ERP schedule endpoint
 - Factory IoT telemetry dashboard backed directly by Spring and JPA
 - Power Platform / BI readiness screen
-- Dataverse-style table model shown in the UI
-- Power Automate flow cards for critical issues, IoT alerts and shift summaries
+- conceptual Dataverse-style table mapping shown in the UI
+- example Power Automate flow cards, without live tenant connection
 - SQL reporting views for issue aging, downtime, OEE proxy and energy per unit
 - reporting API endpoint for the Power/BI screen
 - basic security headers and upload checks
@@ -75,19 +76,17 @@ scripts              SQL reporting view scripts and Power BI sample queries
 docs/screenshots     screenshots for this README
 ```
 
-## Notes
+## Evidence and boundaries
 
-The backend seeds a few demo production lines, machines, work orders and issues, so the app has something to show immediately.
+Backend seeds demo lines, machines, orders, and issues. Tests cover issue rules,
+login/session security, workflow permissions, API, exports, uploads, IoT
+analytics, and reporting views. E2E smoke exercises operator/leader boundary in
+real Chromium and uploads screenshot artifact.
 
-The frontend talks to the backend through `/api`, `/exports` and `/uploads`. The IoT page uses `/api/iot/...`; simulation, anomaly detection, OEE calculations and CSV export all run inside Spring.
-
-The Power/BI page talks to `/api/reporting/power-platform`. The backend builds the reporting layer from SQL views like `rpt_issue_aging`, `rpt_downtime_by_machine`, `rpt_oee_daily` and `rpt_energy_per_unit`.
-
-The tests cover the important behavior: issue rules, login/session security, workflow permissions, seeding, API endpoints, comments, status changes, CSV/PDF exports, upload validation, IoT analytics and the reporting views.
-
-The workflow layer separates operator and leader capabilities. Operators can create issues, comment and start work. Leaders can resolve, verify, delete closed issues and sync downtime to the simulated ERP endpoint.
-
-Each production issue carries lifecycle metadata: creator, last update time, acknowledgement time, response deadline, resolution deadline and escalation timestamp.
+- [Architecture and ownership](docs/architecture.md)
+- [Deployment notes](docs/deployment.md)
+- [Flyway migration story](docs/migrations.md)
+- [Current limitations](docs/limitations.md)
 
 ## Run locally
 
@@ -137,6 +136,10 @@ Services:
 - PostgreSQL: `localhost:5432`
 
 The Compose stack runs the backend with `SPRING_PROFILES_ACTIVE=prod`, PostgreSQL, Flyway migrations and an nginx-served frontend that proxies `/api`, `/exports` and `/uploads` to the backend container.
+
+Compose proves service wiring, not production readiness. See
+[deployment notes](docs/deployment.md) for missing TLS, secret management,
+backups, and operational services.
 
 ## Configuration
 
